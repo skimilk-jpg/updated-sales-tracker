@@ -1938,15 +1938,35 @@ function renderDashboard() {
     months[mo].labourCost += scheduleData[k].labourCost  || 0;
   }
 
-  const sortedMonths = Object.keys(months).sort();
+  // Trailing 12 months, latest first
+  const allSortedMonths = Object.keys(months).sort();
+  const ttmCutoff = (() => {
+    const d = new Date(TODAY); d.setMonth(d.getMonth() - 11); return d.toISOString().slice(0,7);
+  })();
+  const sortedMonths = allSortedMonths.filter(m => m >= ttmCutoff).reverse();
 
-  // --- Overall KPIs ---
+  // --- Overall KPIs (TTM) ---
   const totalGross  = sortedMonths.reduce((s,m) => s + months[m].gross, 0);
   const totalNet    = sortedMonths.reduce((s,m) => s + months[m].net, 0);
   const totalLabour = sortedMonths.reduce((s,m) => s + months[m].labourCost, 0);
   const totalHours  = sortedMonths.reduce((s,m) => s + months[m].hours, 0);
   const totalDays   = sortedMonths.reduce((s,m) => s + months[m].days, 0);
   const labourPctAll = totalNet > 0 ? ((totalLabour / totalNet) * 100).toFixed(1) : '—';
+
+  // --- YoY Growth (prior 12 months vs TTM) ---
+  const priorCutoff = (() => {
+    const d = new Date(TODAY); d.setMonth(d.getMonth() - 23); return d.toISOString().slice(0,7);
+  })();
+  const priorEnd = (() => {
+    const d = new Date(TODAY); d.setMonth(d.getMonth() - 12); return d.toISOString().slice(0,7);
+  })();
+  const priorMonths = allSortedMonths.filter(m => m >= priorCutoff && m <= priorEnd);
+  const priorGross  = priorMonths.reduce((s,m) => s + (months[m]?.gross || 0), 0);
+  const priorNet    = priorMonths.reduce((s,m) => s + (months[m]?.net   || 0), 0);
+  const yoyGross = priorGross > 0 ? ((totalGross - priorGross) / priorGross * 100) : null;
+  const yoyNet   = priorNet   > 0 ? ((totalNet   - priorNet)   / priorNet   * 100) : null;
+  const yoyFmt = v => v === null ? '—' : `${v >= 0 ? '+' : ''}${v.toFixed(1)}%`;
+  const yoyColor = v => v === null ? '' : v >= 0 ? 'color:var(--exceptional)' : 'color:var(--slow)';
 
   // Prediction accuracy overall
   const allPred = sortedMonths.flatMap(m => months[m].predicted);
@@ -1979,10 +1999,10 @@ function renderDashboard() {
   el.innerHTML = `
     <!-- KPI Summary -->
     <div class="db-section">
-      <div class="db-section-title">All-Time Summary</div>
+      <div class="db-section-title">Trailing 12 Months Summary</div>
       <div class="db-kpi-row">
-        <div class="db-kpi"><div class="db-kpi-val">${fmtMoney(totalGross)}</div><div class="db-kpi-label">Total Gross Sales</div></div>
-        <div class="db-kpi"><div class="db-kpi-val">${fmtMoney(totalNet)}</div><div class="db-kpi-label">Total Net Sales</div></div>
+        <div class="db-kpi"><div class="db-kpi-val">${fmtMoney(totalGross)}</div><div class="db-kpi-label">Total Gross Sales</div>${yoyGross !== null ? `<div style="font-size:12px;margin-top:4px;${yoyColor(yoyGross)}">${yoyFmt(yoyGross)} YoY</div>` : ''}</div>
+        <div class="db-kpi"><div class="db-kpi-val">${fmtMoney(totalNet)}</div><div class="db-kpi-label">Total Net Sales</div>${yoyNet !== null ? `<div style="font-size:12px;margin-top:4px;${yoyColor(yoyNet)}">${yoyFmt(yoyNet)} YoY</div>` : ''}</div>
         <div class="db-kpi"><div class="db-kpi-val">${fmtMoney(totalNet/totalDays)}</div><div class="db-kpi-label">Avg Daily Net Sales</div></div>
         ${totalLabour > 0 ? `<div class="db-kpi"><div class="db-kpi-val">${fmtMoney(totalLabour)}</div><div class="db-kpi-label">Total Est. Labour Cost</div></div>` : ''}
         ${totalHours  > 0 ? `<div class="db-kpi"><div class="db-kpi-val">${Math.round(totalHours).toLocaleString()}h</div><div class="db-kpi-label">Total Hours Worked</div></div>` : ''}
