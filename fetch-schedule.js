@@ -102,10 +102,18 @@ async function fetchSchedulers() {
 }
 
 async function fetchUserDeptMap() {
-  const endpoints = ['/v1/users', '/users/v1/users', '/user/v1/users', '/v1/members'];
+  const endpoints = [
+    '/v1/users',
+    '/users/v1/users?limit=500',
+    '/users/v1/users?limit=500&includeArchived=true',
+    '/users/v1/users?limit=500&status=all',
+    '/users/v1/users',
+    '/user/v1/users',
+    '/v1/members'
+  ];
   for (const ep of endpoints) {
     const { status, data } = await connecteamRequest('GET', ep);
-    console.log(`Users endpoint ${ep} → ${status}: FULL=`, JSON.stringify(data).slice(0, 800));
+    console.log(`Users endpoint ${ep} → ${status}: count=`, JSON.stringify(data).slice(0, 200));
     if (status === 200) {
       // Paginate through all users
       const allUsers = [];
@@ -235,8 +243,13 @@ async function main() {
     if (missingIds.length) {
       console.log(`Fetching ${missingIds.length} missing users individually...`);
       for (const uid of missingIds) {
-        const { status, data } = await connecteamRequest('GET', `/users/v1/users/${uid}`);
-        if (status === 200) {
+        // Try POST search by userId as fallback
+        let status, data;
+        ({ status, data } = await connecteamRequest('GET', `/users/v1/users/${uid}`));
+        if (status !== 200) ({ status, data } = await connecteamRequest('POST', `/users/v1/users/search`, { userIds: [uid] }));
+        if (status !== 200) ({ status, data } = await connecteamRequest('GET', `/users/v1/users?userId=${uid}`));
+        const u = (status === 200) ? (data.data?.users?.[0] || data.data || data) : null;
+        if (u && status === 200) {
           const u = data.data || data;
           const fields = u.customFields || [];
           const deptField  = fields.find(f => f.name === 'Department');
