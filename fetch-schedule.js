@@ -47,26 +47,40 @@ function classifyByText(text) {
   const t = text.toLowerCase();
   if (t.includes('server') || t.includes('assistant general manager') ||
       t.includes('foh') || t.includes('front of house') || t.includes('front')) return 'foh';
-  if (t.includes('head cook') || t.includes('kitchen staff') ||
-      t.includes('shift supervisor') || t.includes('kitchen') ||
+  if (t.includes('head cook') || t.includes('shift supervisor') ||
+      t.includes('kitchen staff') || t.includes('kitchen') ||
       t.includes('cook') || t.includes('boh')) return 'boh';
   return null;
 }
 
-function getDeptType(shift, userMap = {}) {
+function classifyByTitle(title) {
+  const t = (title || '').toLowerCase();
+  if (t === 'assistant general manager') return 'foh';
+  if (t === 'head cook' || t === 'shift supervisor' || t === 'kitchen staff') return 'boh';
+  return null;
+}
+
+function getDeptType(shift, userMap = {}, userTitleMap = {}) {
   // 1. Try shift title first
   const titleType = classifyByText(shift.title || '');
   if (titleType) return titleType;
 
-  // 2. Try classifying each assigned user by their job title/department
+  // 2. Try classifying each assigned user by their job title (overrides department)
   const userIds = shift.assignedUserIds || (shift.userId ? [shift.userId] : []);
   for (const uid of userIds) {
-    const dept = userMap[uid] || '';
-    const userType = classifyByText(dept);
-    if (userType) return userType;
+    const jobTitle = userTitleMap[uid] || '';
+    const byTitle = classifyByTitle(jobTitle);
+    if (byTitle) return byTitle;
   }
 
-  // 3. Fallback to other shift fields
+  // 3. Try classifying by user department
+  for (const uid of userIds) {
+    const dept = userMap[uid] || '';
+    const byDept = classifyByText(dept);
+    if (byDept) return byDept;
+  }
+
+  // 4. Fallback
   const fallback = (shift.departmentName || shift.department?.name || shift.department || '');
   return classifyByText(fallback) || 'other';
 }
@@ -93,23 +107,42 @@ async function fetchUserDeptMap() {
     const { status, data } = await connecteamRequest('GET', ep);
     console.log(`Users endpoint ${ep} → ${status}: FULL=`, JSON.stringify(data).slice(0, 800));
     if (status === 200) {
-      const inner = data.data || data;
-      const users = inner.users || inner.members || inner.employees || inner.data ||
-                    (Array.isArray(inner) ? inner : Object.values(inner).find(v => Array.isArray(v)) || []);
-      if (!users.length) { console.warn('Users endpoint returned empty array'); continue; }
-      const map = {};
-      for (const user of users) {
+      // Paginate through all users
+      const allUsers = [];
+      let cursor = null;
+      let firstData = data;
+      do {
+        const d = cursor ? null : firstData;
+        let pageData = d;
+        if (cursor) {
+          const params = new URLSearchParams({ cursor });
+          const r = await connecteamRequest('GET', `${ep}?${params}`);
+          pageData = r.data;
+        }
+        const inner = pageData.data || pageData;
+        const batch = inner.users || inner.members || inner.employees || inner.data ||
+                      (Array.isArray(inner) ? inner : Object.values(inner).find(v => Array.isArray(v)) || []);
+        allUsers.push(...batch);
+        cursor = inner.cursor || inner.nextCursor || pageData.cursor || null;
+        if (cursor) await new Promise(r => setTimeout(r, 150));
+      } while (cursor);
+
+      if (!allUsers.length) { console.warn('Users endpoint returned empty array'); continue; }
+      console.log(`Loaded ${allUsers.length} users total`);
+
+      const deptMap  = {};
+      const titleMap = {};
+      for (const user of allUsers) {
         const id = user.userId || user.id || user._id;
-        // Department and Title are stored in customFields
         const fields = user.customFields || [];
         const deptField  = fields.find(f => f.name === 'Department');
         const titleField = fields.find(f => f.name === 'Title');
         const dept  = deptField?.value?.[0]?.value || deptField?.value || '';
         const title = titleField?.value || '';
-        if (id) map[id] = (dept || title || '').toLowerCase();
+        if (id) { deptMap[id] = dept.toLowerCase(); titleMap[id] = title.toLowerCase(); }
       }
-      console.log('User→dept map sample:', JSON.stringify(Object.entries(map).slice(0, 8)));
-      return map;
+      console.log('User→dept+title sample:', JSON.stringify(Object.entries(deptMap).slice(0, 8).map(([id]) => [id, deptMap[id], titleMap[id]])));
+      return { deptMap, titleMap };
     }
   }
   console.warn('No users endpoint found — classifying by shift title only');
@@ -183,7 +216,7 @@ async function main() {
   for (const scheduler of schedulers) {
     const id = scheduler.schedulerId || scheduler.id || scheduler._id;
     console.log(`Fetching shifts for: ${scheduler.name || id} (id: ${id})`);
-    const userMap = await fetchUserDeptMap();
+    const { deptMap: userMap, titleMap: userTitleMap } = await fetchUserDeptMap();
     const shifts  = await fetchAllShifts(id, startDate, endDate);
     console.log(`Total: ${shifts.length} shifts`);
 
@@ -195,8 +228,10 @@ async function main() {
       const date = toTorontoDate(new Date(startMs).toISOString());
       if (!daily[date]) daily[date] = { headcount: 0, foh: 0, boh: 0, other: 0, totalHours: 0 };
 
-      const type  = getDeptType(shift, userMap);
+      const type  = getDeptType(shift, userMap, userTitleMap);
       const hours = calcHours(shift);
+      // Debug: log March 14 shifts
+      if (date === '2026-03-14') console.log(`  Mar14 shift: title="${shift.title}" userIds=${JSON.stringify(assignedUsers)} dept=${assignedUsers.map(u=>userMap[u]||'?')} title=${assignedUsers.map(u=>userTitleMap[u]||'?')} → ${type}`);
       const count = assignedUsers.length;
 
       daily[date].headcount  += count;
