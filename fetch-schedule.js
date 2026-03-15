@@ -64,8 +64,11 @@ function calcHours(shift) {
 
 async function fetchSchedulers() {
   const { status, data } = await connecteamRequest('GET', '/scheduler/v1/schedulers');
+  console.log('Schedulers API response:', JSON.stringify(data).slice(0, 500));
   if (status !== 200) throw new Error(`Schedulers fetch returned ${status}: ${JSON.stringify(data).slice(0, 200)}`);
-  return data.schedulers || data.data || data || [];
+  // Handle all possible response shapes
+  const raw = data.schedulers || data.data || data.result || data.items || data;
+  return Array.isArray(raw) ? raw : Object.values(raw).filter(v => v && typeof v === 'object');
 }
 
 async function fetchShiftsForScheduler(schedulerId, startDate, endDate) {
