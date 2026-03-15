@@ -2023,6 +2023,7 @@ function renderDashboard() {
             <th class="num">Avg Daily</th>
             <th class="num">Days</th>
             <th class="num">Transactions</th>
+            <th class="num">YoY Growth</th>
             ${totalLabour > 0 ? '<th class="num">Labour Cost</th><th class="num">Hours</th><th class="num">Labour %</th>' : ''}
             ${mape !== null ? '<th class="num">Fcst Accuracy</th>' : ''}
           </tr></thead>
@@ -2036,6 +2037,12 @@ function renderDashboard() {
                 ? (100 - m.actual.reduce((s,a,i)=>s+Math.abs(a-m.predicted[i])/a,0)/m.actual.length*100).toFixed(1)
                 : '—';
               const [yr,mn] = mo.split('-');
+              const priorMo = `${parseInt(yr)-1}-${mn}`;
+              const prior = months[priorMo];
+              const moYoy = prior && prior.net > 0 && m.net > 0
+                ? ((m.net - prior.net) / prior.net * 100) : null;
+              const moYoyStr = moYoy === null ? '—' : `${moYoy >= 0 ? '+' : ''}${moYoy.toFixed(1)}%`;
+              const moYoyCls = moYoy === null ? '' : moYoy >= 0 ? 'good' : 'bad';
               return `<tr>
                 <td><strong>${monthNames[parseInt(mn)-1]} ${yr}</strong></td>
                 <td class="num">${fmtMoney(m.gross)}</td>
@@ -2043,6 +2050,7 @@ function renderDashboard() {
                 <td class="num">${fmtMoney(m.gross/m.days)}</td>
                 <td class="num">${m.days}</td>
                 <td class="num">${m.txCount.toLocaleString()}</td>
+                <td class="num ${moYoyCls}">${moYoyStr}</td>
                 ${totalLabour > 0 ? `<td class="num">${m.labourCost > 0 ? fmtMoney(m.labourCost) : '—'}</td><td class="num">${m.hours > 0 ? Math.round(m.hours)+'h' : '—'}</td><td class="num ${lpCls}">${lp}${isNaN(lpN)?'':'%'}</td>` : ''}
                 ${mape !== null ? `<td class="num ${parseFloat(acc)>=80?'good':parseFloat(acc)>=65?'warn':'bad'}">${acc}${acc!=='—'?'%':''}</td>` : ''}
               </tr>`;
