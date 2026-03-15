@@ -4,6 +4,26 @@ const fs    = require('fs');
 const API_KEY = process.env.CONNECTEAM_API_KEY;
 if (!API_KEY) { console.error('CONNECTEAM_API_KEY not set'); process.exit(1); }
 
+// Hourly rates by staff name (case-insensitive partial match on full name)
+// Management is excluded from labour cost calculation
+const HOURLY_RATES = [
+  { match: 'janey lee',  rate: 20.25 },
+  { match: 'sun kim',    rate: 22.00 },
+  { match: 'marvin',     rate: 15.00 },
+  { match: 'ear',        rate: 19.00 },
+  { match: 'jojo',       rate: 18.00 },
+  { match: 'thuy',       rate: 18.50 },
+  { match: 'rachel',     rate: 18.00 },
+];
+const DEFAULT_RATE    = 17.60;
+const EXCLUDE_DEPTS   = ['management'];
+
+function getRateForName(fullName) {
+  const n = fullName.toLowerCase();
+  const match = HOURLY_RATES.find(r => n.includes(r.match));
+  return match ? match.rate : DEFAULT_RATE;
+}
+
 function connecteamRequest(method, path, body, redirectCount = 0) {
   return new Promise((resolve, reject) => {
     if (redirectCount > 5) return reject(new Error('Too many redirects'));
@@ -151,21 +171,29 @@ async function fetchUserDeptMap() {
 
       const deptMap  = {};
       const titleMap = {};
+      const rateMap  = {};
+      const nameMap  = {};
       for (const user of allUsers) {
         const id = user.userId || user.id || user._id;
         const fields = user.customFields || [];
         const deptField  = fields.find(f => f.name === 'Department');
         const titleField = fields.find(f => f.name === 'Title');
-        const dept  = deptField?.value?.[0]?.value || deptField?.value || '';
-        const title = titleField?.value || '';
-        if (id) { deptMap[id] = dept.toLowerCase(); titleMap[id] = title.toLowerCase(); }
+        const dept     = deptField?.value?.[0]?.value || deptField?.value || '';
+        const title    = titleField?.value || '';
+        const fullName = `${user.firstName || ''} ${user.lastName || ''}`.trim();
+        if (id) {
+          deptMap[id]  = dept.toLowerCase();
+          titleMap[id] = title.toLowerCase();
+          nameMap[id]  = fullName.toLowerCase();
+          rateMap[id]  = EXCLUDE_DEPTS.includes(dept.toLowerCase()) ? null : getRateForName(fullName);
+        }
       }
-      console.log('User→dept+title sample:', JSON.stringify(Object.entries(deptMap).slice(0, 8).map(([id]) => [id, deptMap[id], titleMap[id]])));
-      return { deptMap, titleMap };
+      console.log('User rates:', JSON.stringify(Object.entries(rateMap).map(([id, r]) => [nameMap[id], r])));
+      return { deptMap, titleMap, rateMap, nameMap };
     }
   }
   console.warn('No users endpoint found — classifying by shift title only');
-  return {};
+  return { deptMap: {}, titleMap: {}, rateMap: {}, nameMap: {} };
 }
 
 async function fetchShiftsForMonth(schedulerId, startDate, endDate) {
@@ -235,7 +263,7 @@ async function main() {
   for (const scheduler of schedulers) {
     const id = scheduler.schedulerId || scheduler.id || scheduler._id;
     console.log(`Fetching shifts for: ${scheduler.name || id} (id: ${id})`);
-    const { deptMap: userMap, titleMap: userTitleMap } = await fetchUserDeptMap();
+    const { deptMap: userMap, titleMap: userTitleMap, rateMap: userRateMap, nameMap: userNameMap } = await fetchUserDeptMap();
     const shifts  = await fetchAllShifts(id, startDate, endDate);
 
     // Find user IDs in shifts that are missing from the map and fetch them individually
@@ -250,13 +278,16 @@ async function main() {
         if (status !== 200) ({ status, data } = await connecteamRequest('GET', `/users/v1/users?userId=${uid}`));
         const u = (status === 200) ? (data.data?.users?.[0] || data.data || data) : null;
         if (u && status === 200) {
-          const u = data.data || data;
-          const fields = u.customFields || [];
+          const fields   = u.customFields || [];
           const deptField  = fields.find(f => f.name === 'Department');
           const titleField = fields.find(f => f.name === 'Title');
-          userMap[uid]      = (deptField?.value?.[0]?.value || deptField?.value || '').toLowerCase();
+          const dept     = (deptField?.value?.[0]?.value || deptField?.value || '').toLowerCase();
+          const fullName = `${u.firstName || ''} ${u.lastName || ''}`.trim();
+          userMap[uid]      = dept;
           userTitleMap[uid] = (titleField?.value || '').toLowerCase();
-          console.log(`  User ${uid}: dept="${userMap[uid]}" title="${userTitleMap[uid]}"`);
+          userNameMap[uid]  = fullName.toLowerCase();
+          userRateMap[uid]  = EXCLUDE_DEPTS.includes(dept) ? null : getRateForName(fullName);
+          console.log(`  User ${uid}: name="${fullName}" dept="${dept}" rate=$${userRateMap[uid]}`);
         } else {
           console.warn(`  Could not fetch user ${uid}: ${status}`);
         }
@@ -271,23 +302,27 @@ async function main() {
 
       const startMs = shift.startTime > 1e10 ? shift.startTime : shift.startTime * 1000;
       const date = toTorontoDate(new Date(startMs).toISOString());
-      if (!daily[date]) daily[date] = { headcount: 0, foh: 0, boh: 0, other: 0, totalHours: 0 };
+      if (!daily[date]) daily[date] = { headcount: 0, foh: 0, boh: 0, other: 0, totalHours: 0, labourCost: 0 };
 
       const type  = getDeptType(shift, userMap, userTitleMap);
       const hours = calcHours(shift);
-      // Debug: log March 14 shifts
-      if (date === '2026-03-14') console.log(`  Mar14 shift: title="${shift.title}" userIds=${JSON.stringify(assignedUsers)} dept=${assignedUsers.map(u=>userMap[u]||'?')} title=${assignedUsers.map(u=>userTitleMap[u]||'?')} → ${type}`);
-      const count = assignedUsers.length;
 
-      daily[date].headcount  += count;
-      daily[date][type]      += count;
-      daily[date].totalHours += hours * count;
+      for (const uid of assignedUsers) {
+        daily[date].headcount  += 1;
+        daily[date][type]      += 1;
+        daily[date].totalHours += hours;
+        const rate = userRateMap[uid];
+        if (rate !== null && rate !== undefined) {
+          daily[date].labourCost += hours * rate;
+        }
+      }
     }
   }
 
-  // Round hours to 1 decimal
+  // Round hours and labour cost
   for (const k of Object.keys(daily)) {
-    daily[k].totalHours = Math.round(daily[k].totalHours * 10) / 10;
+    daily[k].totalHours  = Math.round(daily[k].totalHours  * 10) / 10;
+    daily[k].labourCost  = Math.round(daily[k].labourCost  * 100) / 100;
   }
 
   const output = { updatedAt: new Date().toISOString(), days: daily };
