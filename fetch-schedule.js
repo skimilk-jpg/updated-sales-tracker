@@ -99,12 +99,16 @@ async function fetchUserDeptMap() {
       if (!users.length) { console.warn('Users endpoint returned empty array'); continue; }
       const map = {};
       for (const user of users) {
-        const id   = user.id || user.userId || user._id;
-        const dept = (user.jobTitle || user.department?.name || user.department ||
-                      user.position || user.role || '').toLowerCase();
-        if (id) map[id] = dept;
+        const id = user.userId || user.id || user._id;
+        // Department and Title are stored in customFields
+        const fields = user.customFields || [];
+        const deptField  = fields.find(f => f.name === 'Department');
+        const titleField = fields.find(f => f.name === 'Title');
+        const dept  = deptField?.value?.[0]?.value || deptField?.value || '';
+        const title = titleField?.value || '';
+        if (id) map[id] = (dept || title || '').toLowerCase();
       }
-      console.log('User→dept map sample:', JSON.stringify(Object.entries(map).slice(0, 5)));
+      console.log('User→dept map sample:', JSON.stringify(Object.entries(map).slice(0, 8)));
       return map;
     }
   }
