@@ -1266,10 +1266,16 @@ function updateRightPanel() {
     document.getElementById('rpSalesCat').textContent   = 'Actual · Square POS';
     document.getElementById('rpSalesCat').style.color   = color;
     document.getElementById('rpSalesDesc').textContent  = '';
+    const discounts = sqDay.discounts || 0;
+    const tips      = sqDay.tips      || 0;
+    const tax       = sqDay.tax       || 0;
     document.getElementById('rpFactors').innerHTML = `
       <div class="factor-row"><span class="factor-label">Gross Sales</span><span class="factor-val" style="color:var(--text)">${fmtMoney(sqDay.gross)}</span></div>
-      ${refunds > 0 ? `<div class="factor-row"><span class="factor-label">Refunds</span><span class="factor-val neg">−${fmtMoney(refunds)}</span></div>` : ''}
+      ${discounts > 0 ? `<div class="factor-row"><span class="factor-label">Discounts</span><span class="factor-val neg">−${fmtMoney(discounts)}</span></div>` : ''}
+      ${refunds > 0   ? `<div class="factor-row"><span class="factor-label">Refunds</span><span class="factor-val neg">−${fmtMoney(refunds)}</span></div>`   : ''}
       <div class="factor-row"><span class="factor-label">Net Sales</span><span class="factor-val pos">${fmtMoney(net)}</span></div>
+      ${tax  > 0 ? `<div class="factor-row"><span class="factor-label">Tax</span><span class="factor-val" style="color:var(--text)">${fmtMoney(tax)}</span></div>`   : ''}
+      ${tips > 0 ? `<div class="factor-row"><span class="factor-label">Tips</span><span class="factor-val" style="color:var(--text)">${fmtMoney(tips)}</span></div>` : ''}
       <div class="factor-row"><span class="factor-label">Transactions</span><span class="factor-val" style="color:var(--text)">${txCount}</span></div>
       ${txCount > 0 ? `<div class="factor-row"><span class="factor-label">Avg Transaction</span><span class="factor-val" style="color:var(--text)">${fmtMoney(avgTx)}</span></div>` : ''}`;
   } else {
