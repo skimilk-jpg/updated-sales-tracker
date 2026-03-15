@@ -35,26 +35,32 @@ function toTorontoDate(isoStr) {
   return new Date(isoStr).toLocaleDateString('en-CA', { timeZone: 'America/Toronto' });
 }
 
-function getDeptType(shift, jobMap = {}) {
-  // First try to classify using the job's department (most reliable)
-  const jobId   = shift.jobId || shift.job?.id;
-  const jobDept = jobId ? (jobMap[jobId] || '') : '';
+function classifyByText(text) {
+  const t = text.toLowerCase();
+  if (t.includes('server') || t.includes('assistant general manager') ||
+      t.includes('foh') || t.includes('front of house') || t.includes('front')) return 'foh';
+  if (t.includes('head cook') || t.includes('kitchen staff') ||
+      t.includes('shift supervisor') || t.includes('kitchen') ||
+      t.includes('cook') || t.includes('boh')) return 'boh';
+  return null;
+}
 
-  const text = (jobDept ||
-    shift.title || shift.departmentName || shift.department?.name ||
-    shift.department || shift.job?.departmentName || shift.job?.name || ''
-  ).toLowerCase();
+function getDeptType(shift, userMap = {}) {
+  // 1. Try shift title first
+  const titleType = classifyByText(shift.title || '');
+  if (titleType) return titleType;
 
-  // Front of House positions
-  if (text.includes('server') || text.includes('assistant general manager') ||
-      text.includes('foh') || text.includes('front of house') || text.includes('front')) return 'foh';
+  // 2. Try classifying each assigned user by their job title/department
+  const userIds = shift.assignedUserIds || (shift.userId ? [shift.userId] : []);
+  for (const uid of userIds) {
+    const dept = userMap[uid] || '';
+    const userType = classifyByText(dept);
+    if (userType) return userType;
+  }
 
-  // Kitchen positions
-  if (text.includes('head cook') || text.includes('kitchen staff') ||
-      text.includes('shift supervisor') || text.includes('kitchen') ||
-      text.includes('cook') || text.includes('boh')) return 'boh';
-
-  return 'other';
+  // 3. Fallback to other shift fields
+  const fallback = (shift.departmentName || shift.department?.name || shift.department || '');
+  return classifyByText(fallback) || 'other';
 }
 
 function calcHours(shift) {
@@ -73,31 +79,27 @@ async function fetchSchedulers() {
   return Array.isArray(raw) ? raw : [];
 }
 
-async function fetchJobMap(schedulerId) {
-  // Try several possible job endpoints
-  const endpoints = [
-    `/scheduler/v1/jobs`,
-    `/scheduler/v1/schedulers/${schedulerId}/job-titles`,
-    `/scheduler/v1/job-titles`,
-  ];
+async function fetchUserDeptMap() {
+  // Fetch users to get userId → department/jobTitle mapping
+  const endpoints = ['/v1/users', '/users/v1/users', '/user/v1/users'];
   for (const ep of endpoints) {
     const { status, data } = await connecteamRequest('GET', ep);
-    console.log(`Jobs endpoint ${ep} → ${status}:`, JSON.stringify(data).slice(0, 400));
+    console.log(`Users endpoint ${ep} → ${status}:`, JSON.stringify(data).slice(0, 400));
     if (status === 200) {
       const inner = data.data || data;
-      const jobs  = inner.jobs || inner.jobTitles || inner.data || (Array.isArray(inner) ? inner : []);
+      const users = inner.users || inner.data || (Array.isArray(inner) ? inner : []);
       const map   = {};
-      for (const job of jobs) {
-        const id   = job.id || job.jobId || job._id;
-        const dept = (job.departmentName || job.department?.name || job.department || job.name || '').toLowerCase();
+      for (const user of users) {
+        const id   = user.id || user.userId || user._id;
+        const dept = (user.jobTitle || user.department?.name || user.department ||
+                      user.position || user.role || '').toLowerCase();
         if (id) map[id] = dept;
       }
-      console.log('Job→dept map:', JSON.stringify(map).slice(0, 400));
+      console.log('User→dept map sample:', JSON.stringify(Object.entries(map).slice(0, 5)));
       return map;
     }
   }
-  // If no jobs endpoint works, build map from shift titles using jobId
-  console.warn('No jobs endpoint found — will classify by shift title only');
+  console.warn('No users endpoint found — classifying by shift title only');
   return {};
 }
 
@@ -168,8 +170,8 @@ async function main() {
   for (const scheduler of schedulers) {
     const id = scheduler.schedulerId || scheduler.id || scheduler._id;
     console.log(`Fetching shifts for: ${scheduler.name || id} (id: ${id})`);
-    const jobMap = await fetchJobMap(id);
-    const shifts = await fetchAllShifts(id, startDate, endDate);
+    const userMap = await fetchUserDeptMap();
+    const shifts  = await fetchAllShifts(id, startDate, endDate);
     console.log(`Total: ${shifts.length} shifts`);
 
     for (const shift of shifts) {
@@ -180,7 +182,7 @@ async function main() {
       const date = toTorontoDate(new Date(startMs).toISOString());
       if (!daily[date]) daily[date] = { headcount: 0, foh: 0, boh: 0, other: 0, totalHours: 0 };
 
-      const type  = getDeptType(shift, jobMap);
+      const type  = getDeptType(shift, userMap);
       const hours = calcHours(shift);
       const count = assignedUsers.length;
 
