@@ -40,14 +40,20 @@ function toTorontoDate(isoStr) {
 }
 
 function getDeptType(shift) {
-  // Check title, department, and job fields for FOH/Kitchen classification
   const text = (
     shift.title || shift.departmentName || shift.department?.name ||
     shift.department || shift.job?.departmentName || shift.job?.name || ''
   ).toLowerCase();
 
-  if (text.includes('foh') || text.includes('front')) return 'foh';
-  if (text.includes('kitchen') || text.includes('boh') || text.includes('back')) return 'boh';
+  // Front of House positions
+  if (text.includes('server') || text.includes('assistant general manager') ||
+      text.includes('foh') || text.includes('front')) return 'foh';
+
+  // Kitchen positions
+  if (text.includes('head cook') || text.includes('kitchen staff') ||
+      text.includes('shift supervisor') || text.includes('kitchen') ||
+      text.includes('cook') || text.includes('boh')) return 'boh';
+
   return 'other';
 }
 
