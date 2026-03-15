@@ -4,8 +4,9 @@ const fs    = require('fs');
 const API_KEY = process.env.CONNECTEAM_API_KEY;
 if (!API_KEY) { console.error('CONNECTEAM_API_KEY not set'); process.exit(1); }
 
-function connecteamRequest(method, path, body) {
+function connecteamRequest(method, path, body, redirectCount = 0) {
   return new Promise((resolve, reject) => {
+    if (redirectCount > 5) return reject(new Error('Too many redirects'));
     const bodyStr = body ? JSON.stringify(body) : null;
     const req = https.request(
       {
@@ -17,11 +18,18 @@ function connecteamRequest(method, path, body) {
         }
       },
       res => {
+        // Follow redirects
+        if ((res.statusCode === 301 || res.statusCode === 302 || res.statusCode === 307) && res.headers.location) {
+          const loc = res.headers.location;
+          const newPath = loc.startsWith('http') ? new URL(loc).pathname + new URL(loc).search : loc;
+          res.resume();
+          return resolve(connecteamRequest(method, newPath, body, redirectCount + 1));
+        }
         let data = '';
         res.on('data', c => data += c);
         res.on('end', () => {
           try { resolve({ status: res.statusCode, data: JSON.parse(data) }); }
-          catch(e) { reject(new Error(`Parse error: ${data.slice(0, 200)}`)); }
+          catch(e) { resolve({ status: res.statusCode, data: {} }); }
         });
       }
     );
