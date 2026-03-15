@@ -40,18 +40,14 @@ function toTorontoDate(isoStr) {
 }
 
 function getDeptType(shift) {
-  // Check all possible locations Connecteam may put department info
-  const dept = (
-    shift.departmentName ||
-    shift.department?.name ||
-    shift.department ||
-    shift.job?.departmentName ||
-    shift.job?.department?.name ||
-    ''
+  // Check title, department, and job fields for FOH/Kitchen classification
+  const text = (
+    shift.title || shift.departmentName || shift.department?.name ||
+    shift.department || shift.job?.departmentName || shift.job?.name || ''
   ).toLowerCase();
 
-  if (dept.includes(FOH_DEPT)) return 'foh';
-  if (dept.includes(BOH_DEPT)) return 'boh';
+  if (text.includes('foh') || text.includes('front')) return 'foh';
+  if (text.includes('kitchen') || text.includes('boh') || text.includes('back')) return 'boh';
   return 'other';
 }
 
@@ -59,7 +55,10 @@ function calcHours(shift) {
   const start = shift.startTime || shift.start;
   const end   = shift.endTime   || shift.end;
   if (!start || !end) return 0;
-  return Math.max(0, (new Date(end) - new Date(start)) / 3600000);
+  // Connecteam returns Unix seconds — convert to ms for JS Date
+  const startMs = start > 1e10 ? start : start * 1000;
+  const endMs   = end   > 1e10 ? end   : end   * 1000;
+  return Math.max(0, (endMs - startMs) / 3600000);
 }
 
 async function fetchSchedulers() {
@@ -118,10 +117,12 @@ async function main() {
 
     for (const shift of shifts) {
       // Skip unassigned/open shifts
-      const assignedUsers = shift.users || (shift.userId ? [{ id: shift.userId }] : []);
-      if (assignedUsers.length === 0) continue;
+      const assignedUsers = shift.assignedUserIds || shift.users || (shift.userId ? [shift.userId] : []);
+      if (!assignedUsers || assignedUsers.length === 0) continue;
 
-      const date = toTorontoDate(shift.startTime || shift.start || shift.date);
+      // startTime is Unix seconds — convert to ms for Date
+      const startMs = shift.startTime > 1e10 ? shift.startTime : shift.startTime * 1000;
+      const date = toTorontoDate(new Date(startMs).toISOString());
       if (!daily[date]) daily[date] = { headcount: 0, foh: 0, boh: 0, other: 0, totalHours: 0 };
 
       const type  = getDeptType(shift);
