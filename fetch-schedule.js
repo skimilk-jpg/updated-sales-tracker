@@ -92,9 +92,11 @@ async function fetchShiftsForScheduler(schedulerId, startDate, endDate) {
       break;
     }
     console.log(`  Shifts response sample:`, JSON.stringify(data).slice(0, 300));
-    const batch = (data.data && data.data.shifts) || data.shifts || data.data || [];
+    const inner = data.data || data;
+    const batch = inner.shifts || inner.data || [];
     shifts.push(...batch);
-    cursor = data.cursor || data.nextCursor || null;
+    cursor = inner.cursor || inner.nextCursor || inner.next || data.cursor || null;
+    if (cursor) console.log(`  Fetching next page (cursor: ${cursor})...`);
     if (cursor) await new Promise(r => setTimeout(r, 150));
   } while (cursor);
   return shifts;
