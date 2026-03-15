@@ -75,7 +75,12 @@ async function fetchShiftsForScheduler(schedulerId, startDate, endDate) {
   const shifts = [];
   let cursor = null;
   do {
-    const params = new URLSearchParams({ startDate, endDate, limit: 200, ...(cursor ? { cursor } : {}) });
+    const params = new URLSearchParams({
+      startTime: startDate + 'T00:00:00',
+      endTime:   endDate   + 'T23:59:59',
+      limit: 200,
+      ...(cursor ? { cursor } : {})
+    });
     const { status, data } = await connecteamRequest('GET', `/scheduler/v1/schedulers/${schedulerId}/shifts?${params}`);
     if (status !== 200) {
       console.warn(`  Scheduler ${schedulerId} returned ${status}: ${JSON.stringify(data).slice(0, 300)}`);
