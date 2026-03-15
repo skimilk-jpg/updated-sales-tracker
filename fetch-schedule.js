@@ -88,15 +88,16 @@ async function fetchSchedulers() {
 }
 
 async function fetchUserDeptMap() {
-  // Fetch users to get userId → department/jobTitle mapping
-  const endpoints = ['/v1/users', '/users/v1/users', '/user/v1/users'];
+  const endpoints = ['/v1/users', '/users/v1/users', '/user/v1/users', '/v1/members'];
   for (const ep of endpoints) {
     const { status, data } = await connecteamRequest('GET', ep);
-    console.log(`Users endpoint ${ep} → ${status}:`, JSON.stringify(data).slice(0, 400));
+    console.log(`Users endpoint ${ep} → ${status}: FULL=`, JSON.stringify(data).slice(0, 800));
     if (status === 200) {
       const inner = data.data || data;
-      const users = inner.users || inner.data || (Array.isArray(inner) ? inner : []);
-      const map   = {};
+      const users = inner.users || inner.members || inner.employees || inner.data ||
+                    (Array.isArray(inner) ? inner : Object.values(inner).find(v => Array.isArray(v)) || []);
+      if (!users.length) { console.warn('Users endpoint returned empty array'); continue; }
+      const map = {};
       for (const user of users) {
         const id   = user.id || user.userId || user._id;
         const dept = (user.jobTitle || user.department?.name || user.department ||
