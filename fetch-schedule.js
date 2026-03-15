@@ -128,6 +128,17 @@ async function fetchUserDeptMap() {
       } while (cursor);
 
       if (!allUsers.length) { console.warn('Users endpoint returned empty array'); continue; }
+      // Also try fetching with archived users included
+      if (allUsers.length < 20) {
+        const r2 = await connecteamRequest('GET', `${ep}?includeArchived=true`);
+        if (r2.status === 200) {
+          const i2 = r2.data.data || r2.data;
+          const archived = i2.users || i2.members || i2.data || (Array.isArray(i2) ? i2 : []);
+          for (const u of archived) {
+            if (!allUsers.find(x => (x.userId||x.id) === (u.userId||u.id))) allUsers.push(u);
+          }
+        }
+      }
       console.log(`Loaded ${allUsers.length} users total`);
 
       const deptMap  = {};
@@ -218,6 +229,27 @@ async function main() {
     console.log(`Fetching shifts for: ${scheduler.name || id} (id: ${id})`);
     const { deptMap: userMap, titleMap: userTitleMap } = await fetchUserDeptMap();
     const shifts  = await fetchAllShifts(id, startDate, endDate);
+
+    // Find user IDs in shifts that are missing from the map and fetch them individually
+    const missingIds = [...new Set(shifts.flatMap(s => s.assignedUserIds || []).filter(uid => !userMap[uid]))];
+    if (missingIds.length) {
+      console.log(`Fetching ${missingIds.length} missing users individually...`);
+      for (const uid of missingIds) {
+        const { status, data } = await connecteamRequest('GET', `/users/v1/users/${uid}`);
+        if (status === 200) {
+          const u = data.data || data;
+          const fields = u.customFields || [];
+          const deptField  = fields.find(f => f.name === 'Department');
+          const titleField = fields.find(f => f.name === 'Title');
+          userMap[uid]      = (deptField?.value?.[0]?.value || deptField?.value || '').toLowerCase();
+          userTitleMap[uid] = (titleField?.value || '').toLowerCase();
+          console.log(`  User ${uid}: dept="${userMap[uid]}" title="${userTitleMap[uid]}"`);
+        } else {
+          console.warn(`  Could not fetch user ${uid}: ${status}`);
+        }
+        await new Promise(r => setTimeout(r, 100));
+      }
+    }
     console.log(`Total: ${shifts.length} shifts`);
 
     for (const shift of shifts) {
