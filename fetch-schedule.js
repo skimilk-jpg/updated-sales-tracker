@@ -4,10 +4,6 @@ const fs    = require('fs');
 const API_KEY = process.env.CONNECTEAM_API_KEY;
 if (!API_KEY) { console.error('CONNECTEAM_API_KEY not set'); process.exit(1); }
 
-// Department name matching (case-insensitive)
-const FOH_DEPT = 'front of house';
-const BOH_DEPT = 'kitchen';
-
 function connecteamRequest(method, path, body) {
   return new Promise((resolve, reject) => {
     const bodyStr = body ? JSON.stringify(body) : null;
@@ -61,7 +57,6 @@ function calcHours(shift) {
   const start = shift.startTime || shift.start;
   const end   = shift.endTime   || shift.end;
   if (!start || !end) return 0;
-  // Connecteam returns Unix seconds — convert to ms for JS Date
   const startMs = start > 1e10 ? start : start * 1000;
   const endMs   = end   > 1e10 ? end   : end   * 1000;
   return Math.max(0, (endMs - startMs) / 3600000);
@@ -69,14 +64,12 @@ function calcHours(shift) {
 
 async function fetchSchedulers() {
   const { status, data } = await connecteamRequest('GET', '/scheduler/v1/schedulers');
-  console.log('Schedulers API response:', JSON.stringify(data).slice(0, 500));
   if (status !== 200) throw new Error(`Schedulers fetch returned ${status}: ${JSON.stringify(data).slice(0, 200)}`);
-  // Response is: { requestId, data: { schedulers: [...] } }
   const raw = (data.data && data.data.schedulers) || data.schedulers || data.data || [];
   return Array.isArray(raw) ? raw : [];
 }
 
-async function fetchShiftsForScheduler(schedulerId, startDate, endDate) {
+async function fetchShiftsForMonth(schedulerId, startDate, endDate) {
   const shifts = [];
   let cursor = null;
   do {
@@ -88,22 +81,45 @@ async function fetchShiftsForScheduler(schedulerId, startDate, endDate) {
     });
     const { status, data } = await connecteamRequest('GET', `/scheduler/v1/schedulers/${schedulerId}/shifts?${params}`);
     if (status !== 200) {
-      console.warn(`  Scheduler ${schedulerId} returned ${status}: ${JSON.stringify(data).slice(0, 300)}`);
+      console.warn(`    ${startDate} returned ${status}: ${JSON.stringify(data).slice(0, 200)}`);
       break;
     }
-    console.log(`  Shifts response sample:`, JSON.stringify(data).slice(0, 300));
     const inner = data.data || data;
     const batch = inner.shifts || inner.data || [];
     shifts.push(...batch);
     cursor = inner.cursor || inner.nextCursor || inner.next || data.cursor || null;
-    if (cursor) console.log(`  Fetching next page (cursor: ${cursor})...`);
     if (cursor) await new Promise(r => setTimeout(r, 150));
   } while (cursor);
   return shifts;
 }
 
+async function fetchAllShifts(schedulerId, startDate, endDate) {
+  // Fetch month-by-month to stay under the 200-shift-per-request limit
+  const allShifts = [];
+  const cur = new Date(startDate + 'T00:00:00');
+  const end = new Date(endDate   + 'T00:00:00');
+
+  while (cur <= end) {
+    const monthStart = cur.toISOString().slice(0, 10);
+    const lastDay    = new Date(cur.getFullYear(), cur.getMonth() + 1, 0);
+    const monthEnd   = lastDay.toISOString().slice(0, 10);
+    const chunkEnd   = monthEnd < endDate ? monthEnd : endDate;
+
+    console.log(`  Fetching ${monthStart} → ${chunkEnd}...`);
+    const batch = await fetchShiftsForMonth(schedulerId, monthStart, chunkEnd);
+    console.log(`    ${batch.length} shifts`);
+    allShifts.push(...batch);
+
+    // Advance to first day of next month
+    cur.setMonth(cur.getMonth() + 1);
+    cur.setDate(1);
+    await new Promise(r => setTimeout(r, 200));
+  }
+  return allShifts;
+}
+
 async function main() {
-  // Fetch 90 days back (history) + 30 days forward (upcoming schedule)
+  // 90 days back (history) + 30 days forward (upcoming schedule)
   const now   = new Date();
   const start = new Date(now); start.setDate(start.getDate() - 90);
   const end   = new Date(now); end.setDate(end.getDate() + 30);
@@ -113,22 +129,20 @@ async function main() {
   console.log(`Fetching schedule ${startDate} → ${endDate}...`);
 
   const schedulers = await fetchSchedulers();
-  console.log(`Found ${schedulers.length} scheduler(s):`, schedulers.map(s => s.name || s.id).join(', '));
+  console.log(`Found ${schedulers.length} scheduler(s):`, schedulers.map(s => s.name || s.schedulerId).join(', '));
 
   const daily = {};
 
   for (const scheduler of schedulers) {
     const id = scheduler.schedulerId || scheduler.id || scheduler._id;
-    console.log(`  Fetching shifts for: ${scheduler.name || id} (id: ${id})`);
-    const shifts = await fetchShiftsForScheduler(id, startDate, endDate);
-    console.log(`  ${shifts.length} shifts`);
+    console.log(`Fetching shifts for: ${scheduler.name || id} (id: ${id})`);
+    const shifts = await fetchAllShifts(id, startDate, endDate);
+    console.log(`Total: ${shifts.length} shifts`);
 
     for (const shift of shifts) {
-      // Skip unassigned/open shifts
       const assignedUsers = shift.assignedUserIds || shift.users || (shift.userId ? [shift.userId] : []);
       if (!assignedUsers || assignedUsers.length === 0) continue;
 
-      // startTime is Unix seconds — convert to ms for Date
       const startMs = shift.startTime > 1e10 ? shift.startTime : shift.startTime * 1000;
       const date = toTorontoDate(new Date(startMs).toISOString());
       if (!daily[date]) daily[date] = { headcount: 0, foh: 0, boh: 0, other: 0, totalHours: 0 };
