@@ -74,20 +74,31 @@ async function fetchSchedulers() {
 }
 
 async function fetchJobMap(schedulerId) {
-  // Fetch jobs to get jobId → department mapping
-  const { status, data } = await connecteamRequest('GET', `/scheduler/v1/schedulers/${schedulerId}/jobs`);
-  console.log('Jobs API response:', JSON.stringify(data).slice(0, 600));
-  if (status !== 200) { console.warn('Could not fetch jobs:', status); return {}; }
-  const inner = data.data || data;
-  const jobs  = inner.jobs || inner.data || (Array.isArray(inner) ? inner : []);
-  const map   = {};
-  for (const job of jobs) {
-    const id   = job.id || job.jobId || job._id;
-    const dept = (job.departmentName || job.department?.name || job.department || job.name || '').toLowerCase();
-    if (id) map[id] = dept;
+  // Try several possible job endpoints
+  const endpoints = [
+    `/scheduler/v1/jobs`,
+    `/scheduler/v1/schedulers/${schedulerId}/job-titles`,
+    `/scheduler/v1/job-titles`,
+  ];
+  for (const ep of endpoints) {
+    const { status, data } = await connecteamRequest('GET', ep);
+    console.log(`Jobs endpoint ${ep} → ${status}:`, JSON.stringify(data).slice(0, 400));
+    if (status === 200) {
+      const inner = data.data || data;
+      const jobs  = inner.jobs || inner.jobTitles || inner.data || (Array.isArray(inner) ? inner : []);
+      const map   = {};
+      for (const job of jobs) {
+        const id   = job.id || job.jobId || job._id;
+        const dept = (job.departmentName || job.department?.name || job.department || job.name || '').toLowerCase();
+        if (id) map[id] = dept;
+      }
+      console.log('Job→dept map:', JSON.stringify(map).slice(0, 400));
+      return map;
+    }
   }
-  console.log('Job→dept map:', JSON.stringify(map).slice(0, 400));
-  return map;
+  // If no jobs endpoint works, build map from shift titles using jobId
+  console.warn('No jobs endpoint found — will classify by shift title only');
+  return {};
 }
 
 async function fetchShiftsForMonth(schedulerId, startDate, endDate) {
