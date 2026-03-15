@@ -52,14 +52,19 @@ function toTorontoDate(isoStr) {
 async function main() {
   const daily = {};
 
-  // --- Payments (gross sales) ---
+  // --- Payments ---
+  // gross = amount_money (food + tax, before tip) — matches Square's Gross/Net Sales report
+  // tips  = tip_money (stored separately)
+  // total = total_money (gross + tips, what was actually charged to card)
   console.log('Fetching payments...');
   const payments = await fetchAll('payments');
   for (const p of payments) {
     if (p.status !== 'COMPLETED') continue;
     const date = toTorontoDate(p.created_at);
-    if (!daily[date]) daily[date] = { gross: 0, refunds: 0, txCount: 0 };
-    daily[date].gross   += (p.total_money?.amount || 0) / 100;
+    if (!daily[date]) daily[date] = { gross: 0, tips: 0, total: 0, refunds: 0, txCount: 0 };
+    daily[date].gross   += (p.amount_money?.amount || 0) / 100;
+    daily[date].tips    += (p.tip_money?.amount    || 0) / 100;
+    daily[date].total   += (p.total_money?.amount  || 0) / 100;
     daily[date].txCount += 1;
   }
   console.log(`  ${payments.length} payments across ${Object.keys(daily).length} days`);
@@ -79,10 +84,12 @@ async function main() {
     console.warn('  Refunds fetch failed (non-fatal):', e.message);
   }
 
-  // --- Net sales ---
+  // --- Round and calculate net ---
   for (const k of Object.keys(daily)) {
     const d = daily[k];
     d.gross   = Math.round(d.gross   * 100) / 100;
+    d.tips    = Math.round(d.tips    * 100) / 100;
+    d.total   = Math.round(d.total   * 100) / 100;
     d.refunds = Math.round(d.refunds * 100) / 100;
     d.net     = Math.round(Math.max(0, d.gross - d.refunds) * 100) / 100;
   }
