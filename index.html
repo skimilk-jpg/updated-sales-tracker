@@ -316,6 +316,35 @@
 
     @media (max-width: 1100px) { .app-container { grid-template-columns: 220px 1fr; } .right-panel { display: none; } }
     @media (max-width: 750px) { .app-container { grid-template-columns: 1fr; } .left-panel { display: none; } }
+
+    /* OWNER DASHBOARD */
+    .db-overlay { position:fixed;inset:0;background:var(--bg);z-index:2000;overflow-y:auto;display:none; }
+    .db-overlay.open { display:block; }
+    .db-header { background:var(--surface);border-bottom:1px solid var(--border);padding:14px 24px;display:flex;align-items:center;justify-content:space-between;box-shadow:0 1px 6px rgba(0,0,0,0.06);position:sticky;top:0;z-index:10; }
+    .db-title { font-size:17px;font-weight:800;color:var(--text); }
+    .db-sub { font-size:12px;color:var(--text-muted);margin-top:2px; }
+    .db-body { max-width:1200px;margin:0 auto;padding:24px; }
+    .db-section { margin-bottom:32px; }
+    .db-section-title { font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;color:var(--text-muted);margin-bottom:14px;padding-bottom:8px;border-bottom:1px solid var(--border); }
+    .db-kpi-row { display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-bottom:20px; }
+    .db-kpi { background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:14px 16px;box-shadow:0 1px 4px rgba(0,0,0,0.04); }
+    .db-kpi-val { font-size:22px;font-weight:900;color:var(--text);letter-spacing:-0.5px; }
+    .db-kpi-label { font-size:11px;color:var(--text-muted);margin-top:3px; }
+    .db-table { width:100%;border-collapse:collapse;font-size:13px; }
+    .db-table th { text-align:left;padding:9px 12px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.07em;color:var(--text-muted);border-bottom:2px solid var(--border);white-space:nowrap; }
+    .db-table td { padding:9px 12px;border-bottom:1px solid var(--border);color:var(--text); }
+    .db-table tr:last-child td { border-bottom:none; }
+    .db-table tr:hover td { background:var(--surface2); }
+    .db-table .num { text-align:right;font-weight:600; }
+    .db-table .good { color:var(--exceptional); }
+    .db-table .warn { color:var(--below); }
+    .db-table .bad  { color:var(--slow); }
+    .db-insight { background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:14px 16px;margin-bottom:10px;box-shadow:0 1px 4px rgba(0,0,0,0.04);display:flex;gap:12px;align-items:flex-start; }
+    .db-insight-icon { font-size:20px;line-height:1;flex-shrink:0; }
+    .db-insight-text { font-size:13px;color:var(--text);line-height:1.6; }
+    .db-insight-text strong { color:var(--text);font-weight:700; }
+    .db-two-col { display:grid;grid-template-columns:1fr 1fr;gap:20px; }
+    @media (max-width:800px) { .db-two-col { grid-template-columns:1fr; } .db-kpi-row { grid-template-columns:1fr 1fr; } }
   </style>
 </head>
 <body>
@@ -471,6 +500,20 @@
 
 <div class="toast-wrap" id="toastWrap"></div>
 
+<!-- OWNER DASHBOARD -->
+<div class="db-overlay" id="dashboardOverlay">
+  <div class="db-header">
+    <div>
+      <div class="db-title">Owner Dashboard</div>
+      <div class="db-sub">Doraji at The Well · 444 Front St W, Toronto</div>
+    </div>
+    <button class="btn" onclick="closeDashboard()">✕ Close</button>
+  </div>
+  <div class="db-body" id="dashboardBody">
+    <div style="text-align:center;padding:40px;color:var(--text-muted)">Loading...</div>
+  </div>
+</div>
+
 <!-- HEADER -->
 <header>
   <div class="header-left">
@@ -482,6 +525,7 @@
   </div>
   <div class="header-right">
     <div class="weather-status" id="weatherStatus"><div class="spin"></div><span>Loading weather...</span></div>
+    <button class="btn" onclick="openDashboard()">📊 Owner Dashboard</button>
     <button class="btn btn-accent" onclick="openModal('addEventModal')">+ Add Event</button>
     <button class="btn" onclick="openSettingsModal()">Settings</button>
   </div>
@@ -1844,6 +1888,165 @@ function calibrateFromSquare() {
   localStorage.setItem('doraji_settings', JSON.stringify(settings));
   updateTierDisplay();
   console.log('Doraji calibration:', { overall: Math.round(overall), dowAvgs: dowAvgs.map(Math.round), eventLift: eventLift.toFixed(2), tempMult: tempMult.map(v => v.toFixed(2)), condMult: condMult.map(v => v.toFixed(2)) });
+}
+
+// ─── OWNER DASHBOARD ──────────────────────────────────────────────
+function openDashboard() {
+  document.getElementById('dashboardOverlay').classList.add('open');
+  renderDashboard();
+}
+function closeDashboard() {
+  document.getElementById('dashboardOverlay').classList.remove('open');
+}
+
+function renderDashboard() {
+  const el = document.getElementById('dashboardBody');
+  const monthNames = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+
+  // --- Aggregate by month ---
+  const months = {};
+  const getGross = k => { const s = squareSales[k]; return typeof s === 'number' ? s : (s?.gross ?? 0); };
+  const getNet   = k => { const s = squareSales[k]; return typeof s === 'object' && s ? (s.net ?? 0) : 0; };
+
+  // Sales aggregation
+  for (const k of Object.keys(squareSales)) {
+    const gross = getGross(k);
+    if (gross < 100) continue;
+    const mo = k.slice(0, 7);
+    if (!months[mo]) months[mo] = { gross:0, net:0, txCount:0, days:0, hours:0, labourCost:0, predicted:[], actual:[] };
+    const s = squareSales[k];
+    months[mo].gross   += gross;
+    months[mo].net     += getNet(k);
+    months[mo].txCount += typeof s === 'object' ? (s.txCount || 0) : 0;
+    months[mo].days    += 1;
+    // Prediction accuracy for past days
+    const d = parseKey(k);
+    if (d < TODAY) {
+      const pred = predictDay(d);
+      if (!pred.actual && pred.sales > 0) {
+        months[mo].predicted.push(pred.sales);
+        months[mo].actual.push(gross);
+      }
+    }
+  }
+
+  // Schedule aggregation
+  for (const k of Object.keys(scheduleData)) {
+    const mo = k.slice(0, 7);
+    if (!months[mo]) continue;
+    months[mo].hours      += scheduleData[k].totalHours  || 0;
+    months[mo].labourCost += scheduleData[k].labourCost  || 0;
+  }
+
+  const sortedMonths = Object.keys(months).sort();
+
+  // --- Overall KPIs ---
+  const totalGross  = sortedMonths.reduce((s,m) => s + months[m].gross, 0);
+  const totalNet    = sortedMonths.reduce((s,m) => s + months[m].net, 0);
+  const totalLabour = sortedMonths.reduce((s,m) => s + months[m].labourCost, 0);
+  const totalHours  = sortedMonths.reduce((s,m) => s + months[m].hours, 0);
+  const totalDays   = sortedMonths.reduce((s,m) => s + months[m].days, 0);
+  const labourPctAll = totalNet > 0 ? ((totalLabour / totalNet) * 100).toFixed(1) : '—';
+
+  // Prediction accuracy overall
+  const allPred = sortedMonths.flatMap(m => months[m].predicted);
+  const allAct  = sortedMonths.flatMap(m => months[m].actual);
+  const mape = allAct.length > 0
+    ? allAct.reduce((s,a,i) => s + Math.abs(a - allPred[i]) / a, 0) / allAct.length * 100
+    : null;
+
+  // --- Best/worst insights ---
+  const byAvgGross = sortedMonths.map(m => ({ m, avg: months[m].gross / months[m].days })).filter(x => months[x.m].days >= 5);
+  const bestMonth  = byAvgGross.sort((a,b) => b.avg - a.avg)[0];
+  const worstMonth = byAvgGross.sort((a,b) => a.avg - b.avg)[0];
+
+  // DOW breakdown from square data
+  const dowTotals = Array(7).fill(0), dowCounts = Array(7).fill(0);
+  for (const k of Object.keys(squareSales)) {
+    const g = getGross(k); if (g < 100) continue;
+    const dow = parseKey(k).getDay();
+    dowTotals[dow] += g; dowCounts[dow]++;
+  }
+  const dowAvgs   = dowTotals.map((t,i) => dowCounts[i] > 0 ? t/dowCounts[i] : 0);
+  const dowNames  = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+  const bestDow   = dowAvgs.indexOf(Math.max(...dowAvgs.filter(x=>x>0)));
+  const worstDow  = dowAvgs.indexOf(Math.min(...dowAvgs.filter(x=>x>0)));
+
+  // Labour efficiency by month
+  const labourMonths = sortedMonths.filter(m => months[m].labourCost > 0 && months[m].net > 0);
+  const bestLabour   = labourMonths.sort((a,b) => (months[a].labourCost/months[a].net) - (months[b].labourCost/months[b].net))[0];
+
+  el.innerHTML = `
+    <!-- KPI Summary -->
+    <div class="db-section">
+      <div class="db-section-title">All-Time Summary</div>
+      <div class="db-kpi-row">
+        <div class="db-kpi"><div class="db-kpi-val">${fmtMoney(totalGross)}</div><div class="db-kpi-label">Total Gross Sales</div></div>
+        <div class="db-kpi"><div class="db-kpi-val">${fmtMoney(totalNet)}</div><div class="db-kpi-label">Total Net Sales</div></div>
+        <div class="db-kpi"><div class="db-kpi-val">${fmtMoney(totalNet/totalDays)}</div><div class="db-kpi-label">Avg Daily Net Sales</div></div>
+        ${totalLabour > 0 ? `<div class="db-kpi"><div class="db-kpi-val">${fmtMoney(totalLabour)}</div><div class="db-kpi-label">Total Est. Labour Cost</div></div>` : ''}
+        ${totalHours  > 0 ? `<div class="db-kpi"><div class="db-kpi-val">${Math.round(totalHours).toLocaleString()}h</div><div class="db-kpi-label">Total Hours Worked</div></div>` : ''}
+        ${totalLabour > 0 ? `<div class="db-kpi"><div class="db-kpi-val">${labourPctAll}%</div><div class="db-kpi-label">Labour % of Net Sales</div></div>` : ''}
+        ${mape !== null ? `<div class="db-kpi"><div class="db-kpi-val">${(100-mape).toFixed(1)}%</div><div class="db-kpi-label">Forecast Accuracy</div></div>` : ''}
+      </div>
+    </div>
+
+    <!-- Monthly Breakdown -->
+    <div class="db-section">
+      <div class="db-section-title">Monthly Breakdown</div>
+      <div style="overflow-x:auto">
+        <table class="db-table">
+          <thead><tr>
+            <th>Month</th>
+            <th class="num">Gross Sales</th>
+            <th class="num">Net Sales</th>
+            <th class="num">Avg Daily</th>
+            <th class="num">Days</th>
+            <th class="num">Transactions</th>
+            ${totalLabour > 0 ? '<th class="num">Labour Cost</th><th class="num">Hours</th><th class="num">Labour %</th>' : ''}
+            ${mape !== null ? '<th class="num">Fcst Accuracy</th>' : ''}
+          </tr></thead>
+          <tbody>
+            ${sortedMonths.map(mo => {
+              const m   = months[mo];
+              const lp  = m.net > 0 && m.labourCost > 0 ? ((m.labourCost/m.net)*100).toFixed(1) : '—';
+              const lpN = parseFloat(lp);
+              const lpCls = isNaN(lpN) ? '' : lpN < 30 ? 'good' : lpN < 40 ? 'warn' : 'bad';
+              const acc = m.actual.length >= 3
+                ? (100 - m.actual.reduce((s,a,i)=>s+Math.abs(a-m.predicted[i])/a,0)/m.actual.length*100).toFixed(1)
+                : '—';
+              const [yr,mn] = mo.split('-');
+              return `<tr>
+                <td><strong>${monthNames[parseInt(mn)-1]} ${yr}</strong></td>
+                <td class="num">${fmtMoney(m.gross)}</td>
+                <td class="num">${fmtMoney(m.net)}</td>
+                <td class="num">${fmtMoney(m.gross/m.days)}</td>
+                <td class="num">${m.days}</td>
+                <td class="num">${m.txCount.toLocaleString()}</td>
+                ${totalLabour > 0 ? `<td class="num">${m.labourCost > 0 ? fmtMoney(m.labourCost) : '—'}</td><td class="num">${m.hours > 0 ? Math.round(m.hours)+'h' : '—'}</td><td class="num ${lpCls}">${lp}${isNaN(lpN)?'':'%'}</td>` : ''}
+                ${mape !== null ? `<td class="num ${parseFloat(acc)>=80?'good':parseFloat(acc)>=65?'warn':'bad'}">${acc}${acc!=='—'?'%':''}</td>` : ''}
+              </tr>`;
+            }).join('')}
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Insights -->
+    <div class="db-section">
+      <div class="db-section-title">Key Insights</div>
+      <div>
+        ${bestMonth ? `<div class="db-insight"><div class="db-insight-icon">📈</div><div class="db-insight-text"><strong>Best month:</strong> ${monthNames[parseInt(bestMonth.m.split('-')[1])-1]} ${bestMonth.m.split('-')[0]} averaged <strong>${fmtMoney(bestMonth.avg)}/day</strong> in gross sales.</div></div>` : ''}
+        ${worstMonth && worstMonth.m !== bestMonth?.m ? `<div class="db-insight"><div class="db-insight-icon">📉</div><div class="db-insight-text"><strong>Slowest month:</strong> ${monthNames[parseInt(worstMonth.m.split('-')[1])-1]} ${worstMonth.m.split('-')[0]} averaged <strong>${fmtMoney(worstMonth.avg)}/day</strong>. Consider promotions or reduced hours.</div></div>` : ''}
+        ${dowAvgs[bestDow] > 0 ? `<div class="db-insight"><div class="db-insight-icon">🗓️</div><div class="db-insight-text"><strong>Strongest day:</strong> ${dowNames[bestDow]}s average <strong>${fmtMoney(dowAvgs[bestDow])}</strong> in gross sales — your busiest day of the week.</div></div>` : ''}
+        ${dowAvgs[worstDow] > 0 ? `<div class="db-insight"><div class="db-insight-icon">💡</div><div class="db-insight-text"><strong>Slowest day:</strong> ${dowNames[worstDow]}s average <strong>${fmtMoney(dowAvgs[worstDow])}</strong>. Consider staffing down or running specials.</div></div>` : ''}
+        ${bestLabour ? `<div class="db-insight"><div class="db-insight-icon">✅</div><div class="db-insight-text"><strong>Best labour efficiency:</strong> ${monthNames[parseInt(bestLabour.split('-')[1])-1]} ${bestLabour.split('-')[0]} had the lowest labour cost at <strong>${((months[bestLabour].labourCost/months[bestLabour].net)*100).toFixed(1)}%</strong> of net sales.</div></div>` : ''}
+        ${mape !== null ? `<div class="db-insight"><div class="db-insight-icon">🎯</div><div class="db-insight-text"><strong>Forecast accuracy:</strong> The prediction engine is <strong>${(100-mape).toFixed(1)}% accurate</strong> on average across ${allAct.length} days of data. ${mape < 10 ? 'Excellent calibration.' : mape < 20 ? 'Good calibration — improving as more data accumulates.' : 'Still calibrating — accuracy will improve with more historical data.'}</div></div>` : ''}
+        <div class="db-insight"><div class="db-insight-icon">🌡️</div><div class="db-insight-text"><strong>Weather impact:</strong> Warm days (20–27°C) average <strong>8% more</strong> sales than the baseline. Very cold days (below -10°C) average <strong>26% less</strong>. Heavy rain reduces sales by <strong>~7%</strong>.</div></div>
+        <div class="db-insight"><div class="db-insight-icon">🏒</div><div class="db-insight-text"><strong>Home game lift:</strong> Raptors, Leafs, and Blue Jays home games drive measurable sales increases. The engine applies a data-calibrated multiplier on game days.</div></div>
+      </div>
+    </div>
+  `;
 }
 
 function updateSquareStatus(state) {
