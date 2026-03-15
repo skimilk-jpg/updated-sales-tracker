@@ -1712,7 +1712,6 @@ function calibrateFromSquare() {
 function updateSquareStatus(state) {
   const el = document.getElementById('squareStatus');
   if (!el) return;
-  if (!settings.squareKey) { el.innerHTML = ''; return; }
   if (state === 'loading') { el.innerHTML = '<span style="color:var(--text-muted)">Loading sales data…</span>'; return; }
   if (state === 'error')   { el.innerHTML = '<span style="color:var(--slow)">Load failed — ensure GitHub Action has run.</span>'; return; }
   if (state === 'empty')   { el.innerHTML = '<span style="color:var(--text-muted)">No data yet — trigger the GitHub Action manually.</span>'; return; }
