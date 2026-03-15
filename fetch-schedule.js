@@ -66,9 +66,9 @@ async function fetchSchedulers() {
   const { status, data } = await connecteamRequest('GET', '/scheduler/v1/schedulers');
   console.log('Schedulers API response:', JSON.stringify(data).slice(0, 500));
   if (status !== 200) throw new Error(`Schedulers fetch returned ${status}: ${JSON.stringify(data).slice(0, 200)}`);
-  // Handle all possible response shapes
-  const raw = data.schedulers || data.data || data.result || data.items || data;
-  return Array.isArray(raw) ? raw : Object.values(raw).filter(v => v && typeof v === 'object');
+  // Response is: { requestId, data: { schedulers: [...] } }
+  const raw = (data.data && data.data.schedulers) || data.schedulers || data.data || [];
+  return Array.isArray(raw) ? raw : [];
 }
 
 async function fetchShiftsForScheduler(schedulerId, startDate, endDate) {
@@ -78,10 +78,11 @@ async function fetchShiftsForScheduler(schedulerId, startDate, endDate) {
     const params = new URLSearchParams({ startDate, endDate, limit: 200, ...(cursor ? { cursor } : {}) });
     const { status, data } = await connecteamRequest('GET', `/scheduler/v1/schedulers/${schedulerId}/shifts?${params}`);
     if (status !== 200) {
-      console.warn(`  Scheduler ${schedulerId} returned ${status} — skipping`);
+      console.warn(`  Scheduler ${schedulerId} returned ${status}: ${JSON.stringify(data).slice(0, 300)}`);
       break;
     }
-    const batch = data.shifts || data.data || [];
+    console.log(`  Shifts response sample:`, JSON.stringify(data).slice(0, 300));
+    const batch = (data.data && data.data.shifts) || data.shifts || data.data || [];
     shifts.push(...batch);
     cursor = data.cursor || data.nextCursor || null;
     if (cursor) await new Promise(r => setTimeout(r, 150));
@@ -105,8 +106,8 @@ async function main() {
   const daily = {};
 
   for (const scheduler of schedulers) {
-    const id = scheduler.id || scheduler._id;
-    console.log(`  Fetching shifts for: ${scheduler.name || id}`);
+    const id = scheduler.schedulerId || scheduler.id || scheduler._id;
+    console.log(`  Fetching shifts for: ${scheduler.name || id} (id: ${id})`);
     const shifts = await fetchShiftsForScheduler(id, startDate, endDate);
     console.log(`  ${shifts.length} shifts`);
 
