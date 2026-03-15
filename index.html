@@ -1675,11 +1675,14 @@ function updateStaffingPanel(d) {
     return;
   }
 
-  const foh   = s.foh   || 0;
-  const boh   = s.boh   || 0;
-  const other = s.other || 0;
-  const total = s.headcount || 0;
-  const hrs   = s.totalHours || 0;
+  const foh        = s.foh        || 0;
+  const boh        = s.boh        || 0;
+  const other      = s.other      || 0;
+  const total      = s.headcount  || 0;
+  const hrs        = s.totalHours || 0;
+  const labourCost = s.labourCost || 0;
+  const salesAmt   = getActualSales(d) || predictDay(d).sales || 0;
+  const labourPct  = salesAmt > 0 ? Math.round((labourCost / salesAmt) * 100) : 0;
 
   el.innerHTML = `
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px">
@@ -1691,6 +1694,15 @@ function updateStaffingPanel(d) {
         <div style="font-size:22px;font-weight:800;color:var(--text)">${hrs}</div>
         <div style="font-size:10px;color:var(--text-muted);margin-top:2px">Hours Scheduled</div>
       </div>
+      ${labourCost > 0 ? `
+      <div style="background:var(--surface2);border-radius:8px;padding:10px;text-align:center;border:1px solid var(--border)">
+        <div style="font-size:18px;font-weight:800;color:var(--text)">${fmtMoney(labourCost)}</div>
+        <div style="font-size:10px;color:var(--text-muted);margin-top:2px">Est. Labour Cost</div>
+      </div>
+      <div style="background:var(--surface2);border-radius:8px;padding:10px;text-align:center;border:1px solid var(--border)">
+        <div style="font-size:18px;font-weight:800;color:${labourPct > 40 ? 'var(--slow)' : labourPct > 30 ? 'var(--below)' : 'var(--exceptional)'}">${labourPct}%</div>
+        <div style="font-size:10px;color:var(--text-muted);margin-top:2px">Labour % of Sales</div>
+      </div>` : ''}
     </div>
     <div style="display:flex;flex-direction:column;gap:6px">
       <div style="display:flex;justify-content:space-between;align-items:center;background:var(--surface2);border-radius:7px;padding:8px 10px;border-left:3px solid #1a72b8">
