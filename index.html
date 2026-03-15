@@ -511,6 +511,8 @@
         <div class="stat-card"><div class="stat-val" id="sTodayCat">—</div><div class="stat-label">Day Type</div></div>
         <div class="stat-card"><div class="stat-val" id="sTodayTemp">—</div><div class="stat-label">High Temp</div></div>
         <div class="stat-card"><div class="stat-val" id="sTodayEvents">—</div><div class="stat-label">Nearby Events</div></div>
+        <div class="stat-card"><div class="stat-val" id="sTodayStaff">—</div><div class="stat-label">Staff Today</div></div>
+        <div class="stat-card"><div class="stat-val" id="sTodayHours">—</div><div class="stat-label">Hrs Scheduled</div></div>
       </div>
     </div>
 
@@ -595,6 +597,12 @@
     <div class="rp-section">
       <div class="rp-title">Weather</div>
       <div id="rpWeather"><div style="font-size:12px;color:var(--text-muted)">Loading...</div></div>
+    </div>
+
+    <!-- Staffing -->
+    <div class="rp-section" id="rpStaffingSection">
+      <div class="rp-title">Staffing <span id="rpStaffingSync" style="font-weight:400;font-size:10px;color:var(--text-muted)"></span></div>
+      <div id="rpStaffing"><div style="font-size:12px;color:var(--text-muted)">No schedule data</div></div>
     </div>
 
     <!-- Events -->
@@ -1346,6 +1354,9 @@ function updateRightPanel() {
     }).join('');
   }
 
+  // Staffing
+  updateStaffingPanel(d);
+
   // Notes
   document.getElementById('rpNotes').value = notesStore[dateKey(d)] || '';
 }
@@ -1361,6 +1372,9 @@ function updateTodayStats() {
   el('sTodayCat').style.color = salesColor(sales);
   el('sTodayTemp').textContent = w ? `${w.maxTemp}°C` : '—';
   el('sTodayEvents').textContent = events.length;
+  const sched = getScheduleDay(TODAY);
+  el('sTodayStaff').textContent = sched ? sched.headcount : '—';
+  el('sTodayHours').textContent = sched ? sched.totalHours + 'h' : '—';
 }
 
 // ─── NAVIGATION ───────────────────────────────────────────────────
@@ -1605,6 +1619,107 @@ async function fetchTicketmaster(forceRefresh = false) {
   }
 }
 
+// ─── CONNECTEAM ───────────────────────────────────────────────────
+const SCHEDULE_CACHE_KEY = 'doraji_schedule_daily';
+const SCHEDULE_SYNC_KEY  = 'doraji_schedule_sync';
+const SCHEDULE_CACHE_TTL = 6 * 60 * 60 * 1000; // 6 hours
+
+let scheduleData = JSON.parse(localStorage.getItem(SCHEDULE_CACHE_KEY) || '{}');
+
+function isScheduleCacheValid() {
+  try {
+    const s = JSON.parse(localStorage.getItem(SCHEDULE_SYNC_KEY) || 'null');
+    return !!(s && (Date.now() - s.ts) < SCHEDULE_CACHE_TTL);
+  } catch(e) { return false; }
+}
+
+function getScheduleDay(d) {
+  return scheduleData[dateKey(d)] || null;
+}
+
+async function fetchScheduleData(forceRefresh = false) {
+  if (!forceRefresh && isScheduleCacheValid()) { updateStaffingPanel(selectedDate); updateTodayStats(); return; }
+  try {
+    const res = await fetch('schedule-data.json?t=' + Date.now());
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    if (!data.days || Object.keys(data.days).length === 0) return;
+    scheduleData = data.days;
+    localStorage.setItem(SCHEDULE_CACHE_KEY, JSON.stringify(scheduleData));
+    localStorage.setItem(SCHEDULE_SYNC_KEY, JSON.stringify({ ts: Date.now(), count: Object.keys(scheduleData).length, updatedAt: data.updatedAt }));
+    updateStaffingPanel(selectedDate);
+    updateTodayStats();
+    renderCalendar();
+    showToast(`Loaded ${Object.keys(scheduleData).length} days of schedule data!`, 'success');
+  } catch(e) {
+    console.warn('Schedule fetch failed:', e.message);
+  }
+}
+
+function updateStaffingPanel(d) {
+  const el = document.getElementById('rpStaffing');
+  const syncEl = document.getElementById('rpStaffingSync');
+  if (!el) return;
+
+  const s = getScheduleDay(d);
+  if (!s) {
+    el.innerHTML = `<div style="font-size:12px;color:var(--text-muted)">No schedule data for this day.</div>`;
+    if (syncEl) {
+      try {
+        const sync = JSON.parse(localStorage.getItem(SCHEDULE_SYNC_KEY) || 'null');
+        syncEl.innerHTML = sync
+          ? `<button onclick="fetchScheduleData(true)" class="btn btn-sm" style="margin-left:6px">Refresh</button>`
+          : `<button onclick="fetchScheduleData(true)" class="btn btn-sm" style="margin-left:6px">Sync Now</button>`;
+      } catch(e) {}
+    }
+    return;
+  }
+
+  const foh   = s.foh   || 0;
+  const boh   = s.boh   || 0;
+  const other = s.other || 0;
+  const total = s.headcount || 0;
+  const hrs   = s.totalHours || 0;
+
+  el.innerHTML = `
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px">
+      <div style="background:var(--surface2);border-radius:8px;padding:10px;text-align:center;border:1px solid var(--border)">
+        <div style="font-size:22px;font-weight:800;color:var(--text)">${total}</div>
+        <div style="font-size:10px;color:var(--text-muted);margin-top:2px">Total Staff</div>
+      </div>
+      <div style="background:var(--surface2);border-radius:8px;padding:10px;text-align:center;border:1px solid var(--border)">
+        <div style="font-size:22px;font-weight:800;color:var(--text)">${hrs}</div>
+        <div style="font-size:10px;color:var(--text-muted);margin-top:2px">Hours Scheduled</div>
+      </div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:6px">
+      <div style="display:flex;justify-content:space-between;align-items:center;background:var(--surface2);border-radius:7px;padding:8px 10px;border-left:3px solid #1a72b8">
+        <span style="font-size:12px;font-weight:600;color:var(--text)">Front of House</span>
+        <span style="font-size:13px;font-weight:800;color:var(--text)">${foh} shifts</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;align-items:center;background:var(--surface2);border-radius:7px;padding:8px 10px;border-left:3px solid var(--exceptional)">
+        <span style="font-size:12px;font-weight:600;color:var(--text)">Kitchen</span>
+        <span style="font-size:13px;font-weight:800;color:var(--text)">${boh} shifts</span>
+      </div>
+      ${other > 0 ? `<div style="display:flex;justify-content:space-between;align-items:center;background:var(--surface2);border-radius:7px;padding:8px 10px;border-left:3px solid var(--text-muted)">
+        <span style="font-size:12px;font-weight:600;color:var(--text)">Other</span>
+        <span style="font-size:13px;font-weight:800;color:var(--text)">${other} shifts</span>
+      </div>` : ''}
+    </div>`;
+
+  if (syncEl) {
+    try {
+      const sync = JSON.parse(localStorage.getItem(SCHEDULE_SYNC_KEY) || 'null');
+      if (sync) {
+        const mins = Math.round((Date.now() - sync.ts) / 60000);
+        const age  = mins < 60 ? `${mins}m ago` : `${Math.round(mins/60)}h ago`;
+        syncEl.innerHTML = `<span style="color:var(--exceptional)">✓ synced ${age}</span>
+          <button onclick="fetchScheduleData(true)" class="btn btn-sm" style="margin-left:6px">Refresh</button>`;
+      }
+    } catch(e) {}
+  }
+}
+
 // ─── SQUARE ───────────────────────────────────────────────────────
 const SQUARE_API       = 'https://connect.squareup.com/v2';
 const SQUARE_LOC       = 'LAN90KWFK5QXV';
@@ -1832,10 +1947,12 @@ function init() {
   fetchHistoricalWeather();   // Open-Meteo archive — last 2 years, 7-day cache
   if (settings.tmKey) fetchTicketmaster();
   fetchSquareSales();
-  // Auto-refresh: check every hour, fetch if 24h cache has expired
+  fetchScheduleData();
+  // Auto-refresh: check every hour, fetch if caches have expired
   setInterval(() => {
     if (settings.tmKey && !isTMCacheValid()) fetchTicketmaster();
     if (!isSquareCacheValid()) fetchSquareSales();
+    if (!isScheduleCacheValid()) fetchScheduleData();
   }, 60 * 60 * 1000);
 }
 
