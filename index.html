@@ -7,25 +7,27 @@
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap');
+
     :root {
-      --bg: #0f172a;
-      --surface: #1e293b;
-      --surface2: #273449;
-      --border: #334155;
-      --accent: #f59e0b;
-      --accent2: #fbbf24;
-      --text: #f1f5f9;
-      --text-muted: #94a3b8;
-      --exceptional: #22c55e;
-      --strong: #84cc16;
-      --average: #f59e0b;
-      --below: #f97316;
-      --slow: #ef4444;
-      --info: #38bdf8;
+      --bg: #f5f3ef;
+      --surface: #ffffff;
+      --surface2: #eeebe5;
+      --border: #ddd8d0;
+      --accent: #c4903a;
+      --accent2: #b07e28;
+      --text: #1a1410;
+      --text-muted: #7a6e65;
+      --exceptional: #2a7a3a;
+      --strong: #4a8c2a;
+      --average: #c88b0a;
+      --below: #c85808;
+      --slow: #c82828;
+      --info: #1a72b8;
     }
 
     body {
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
       background: var(--bg);
       color: var(--text);
       min-height: 100vh;
@@ -37,7 +39,8 @@
     header {
       background: var(--surface);
       border-bottom: 1px solid var(--border);
-      padding: 12px 20px;
+      box-shadow: 0 1px 6px rgba(0,0,0,0.06);
+      padding: 10px 20px;
       display: flex; align-items: center; justify-content: space-between;
       gap: 16px; flex-wrap: wrap;
     }
@@ -52,7 +55,7 @@
       font-size: 13px; font-weight: 500; transition: all 0.15s; white-space: nowrap;
     }
     .btn:hover { background: var(--border); }
-    .btn-accent { background: var(--accent); border-color: var(--accent); color: #000; font-weight: 700; }
+    .btn-accent { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 700; }
     .btn-accent:hover { background: var(--accent2); border-color: var(--accent2); }
     .btn-sm { padding: 5px 10px; font-size: 12px; }
     .weather-status {
@@ -93,7 +96,7 @@
       font-size: 12px; border-radius: 5px; cursor: pointer; transition: all 0.15s; position: relative;
     }
     .mini-cell:hover { background: var(--surface2); }
-    .mini-cell.today { background: var(--accent); color: #000; font-weight: 700; }
+    .mini-cell.today { background: var(--accent); color: #fff; font-weight: 700; }
     .mini-cell.selected { background: var(--surface2); border: 1px solid var(--accent); }
     .mini-cell.other-month { color: var(--text-muted); opacity: 0.4; }
     .mini-dot { position: absolute; bottom: 1px; left: 50%; transform: translateX(-50%); width: 3px; height: 3px; border-radius: 50%; background: var(--accent); }
@@ -144,7 +147,7 @@
     .cal-nav-btn:hover { background: var(--border); }
     .view-toggle { display: flex; border: 1px solid var(--border); border-radius: 7px; overflow: hidden; margin-left: auto; }
     .view-btn { padding: 6px 14px; font-size: 12px; font-weight: 600; background: none; border: none; color: var(--text-muted); cursor: pointer; transition: all 0.15s; }
-    .view-btn.active { background: var(--accent); color: #000; }
+    .view-btn.active { background: var(--accent); color: #fff; }
     .calendar-wrapper { flex: 1; overflow-y: auto; padding: 12px; }
 
     /* Weather Strip */
@@ -162,7 +165,7 @@
     }
     .ws-day:last-child { border-right: none; }
     .ws-day:hover { background: var(--surface2); }
-    .ws-today { background: rgba(245,158,11,0.06) !important; }
+    .ws-today { background: rgba(196,144,58,0.08) !important; }
     .ws-selected { border-bottom: 2px solid var(--accent); }
     .ws-label { font-size: 10px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em; }
     .ws-icon { font-size: 24px; line-height: 1; }
@@ -182,8 +185,8 @@
       position: relative; overflow: hidden;
     }
     .cal-cell:hover { border-color: var(--accent); background: var(--surface2); }
-    .cal-cell.selected { border-color: var(--accent); box-shadow: 0 0 0 2px rgba(245,158,11,0.3); }
-    .cal-cell.today .cell-date-num { background: var(--accent); color: #000; border-radius: 50%; width: 22px; height: 22px; display: flex; align-items: center; justify-content: center; }
+    .cal-cell.selected { border-color: var(--accent); box-shadow: 0 0 0 2px rgba(196,144,58,0.25); }
+    .cal-cell.today .cell-date-num { background: var(--accent); color: #fff; border-radius: 50%; width: 22px; height: 22px; display: flex; align-items: center; justify-content: center; }
     .cal-cell.other-month { opacity: 0.3; }
     .cell-date-num { font-size: 12px; font-weight: 700; width: 22px; height: 22px; display: flex; align-items: center; justify-content: center; margin-bottom: 3px; }
     .cell-sales-bar { height: 3px; border-radius: 2px; margin-bottom: 4px; }
@@ -201,7 +204,7 @@
     .week-day-col:hover { background: var(--surface2); }
     .week-day-name { font-size: 11px; color: var(--text-muted); font-weight: 600; }
     .week-day-num { font-size: 20px; font-weight: 700; }
-    .week-day-num.today-ring { background: var(--accent); color: #000; border-radius: 50%; width: 34px; height: 34px; display: flex; align-items: center; justify-content: center; margin: 0 auto; font-size: 16px; }
+    .week-day-num.today-ring { background: var(--accent); color: #fff; border-radius: 50%; width: 34px; height: 34px; display: flex; align-items: center; justify-content: center; margin: 0 auto; font-size: 16px; }
     .week-row-label { font-size: 10px; color: var(--text-muted); padding: 8px; display: flex; align-items: center; border-right: 1px solid var(--border); }
     .week-data-row { display: grid; grid-template-columns: 70px repeat(7, 1fr); border-bottom: 1px solid var(--border); }
     .week-data-cell { border-left: 1px solid var(--border); padding: 6px 8px; cursor: pointer; transition: background 0.15s; }
@@ -215,7 +218,7 @@
     .week-event-chip { font-size: 9px; padding: 2px 5px; border-radius: 3px; margin-bottom: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; }
     .week-events-cell { border-left: 1px solid var(--border); padding: 5px; min-height: 70px; cursor: pointer; transition: background 0.15s; }
     .week-events-cell:hover { background: var(--surface2); }
-    .today-col { background: rgba(245,158,11,0.04); }
+    .today-col { background: rgba(196,144,58,0.06); }
 
     /* RIGHT PANEL */
     .right-panel { background: var(--surface); border-left: 1px solid var(--border); overflow-y: auto; display: flex; flex-direction: column; }
@@ -290,7 +293,7 @@
     .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
     .modal-actions { display: flex; gap: 10px; margin-top: 20px; }
     .modal-actions .btn { flex: 1; }
-    .info-box { background: rgba(245,158,11,0.08); border: 1px solid rgba(245,158,11,0.25); border-radius: 7px; padding: 10px 12px; font-size: 11px; color: var(--accent2); line-height: 1.6; }
+    .info-box { background: rgba(196,144,58,0.08); border: 1px solid rgba(196,144,58,0.3); border-radius: 7px; padding: 10px 12px; font-size: 11px; color: var(--accent2); line-height: 1.6; }
 
     /* Toast */
     .toast-wrap { position: fixed; bottom: 20px; right: 20px; z-index: 2000; display: flex; flex-direction: column; gap: 8px; }
@@ -304,7 +307,12 @@
 
     ::-webkit-scrollbar { width: 5px; height: 5px; }
     ::-webkit-scrollbar-track { background: transparent; }
-    ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+    ::-webkit-scrollbar-thumb { background: #c8c0b4; border-radius: 3px; }
+
+    /* Subtle card shadows for light theme */
+    .cal-cell { box-shadow: 0 1px 3px rgba(0,0,0,0.04); }
+    .stat-card { box-shadow: 0 1px 3px rgba(0,0,0,0.04); }
+    .event-card { box-shadow: 0 1px 3px rgba(0,0,0,0.04); }
 
     @media (max-width: 1100px) { .app-container { grid-template-columns: 220px 1fr; } .right-panel { display: none; } }
     @media (max-width: 750px) { .app-container { grid-template-columns: 1fr; } .left-panel { display: none; } }
@@ -450,13 +458,14 @@
   </div>
 </div>
 
-<div id="passwordOverlay" style="position:fixed;inset:0;background:#0f172a;display:flex;align-items:center;justify-content:center;z-index:9999">
-  <div style="background:#1e293b;border:1px solid #334155;border-radius:14px;padding:32px;width:340px;max-width:92vw;text-align:center">
-    <div style="font-size:22px;font-weight:800;color:#f59e0b;margin-bottom:4px">Doraji <span style="color:#f1f5f9;font-weight:400">at The Well</span></div>
-    <div style="font-size:12px;color:#94a3b8;margin-bottom:24px">Enter password to continue</div>
-    <input id="pwInput" type="password" placeholder="Password" style="width:100%;background:#273449;border:1px solid #334155;border-radius:7px;color:#f1f5f9;padding:10px 14px;font-size:14px;font-family:inherit;outline:none;margin-bottom:10px" onkeydown="if(event.key==='Enter')checkPassword()">
-    <div id="pwError" style="font-size:12px;color:#ef4444;min-height:18px;margin-bottom:10px"></div>
-    <button onclick="checkPassword()" style="width:100%;background:#f59e0b;border:none;border-radius:7px;color:#000;font-size:14px;font-weight:700;padding:10px;cursor:pointer">Unlock</button>
+<div id="passwordOverlay" style="position:fixed;inset:0;background:#f5f3ef;display:flex;align-items:center;justify-content:center;z-index:9999">
+  <div style="background:#ffffff;border:1px solid #ddd8d0;border-radius:16px;padding:36px 32px;width:360px;max-width:92vw;text-align:center;box-shadow:0 8px 40px rgba(0,0,0,0.10)">
+    <img src="https://images.squarespace-cdn.com/content/v1/65654564baf839246fcc8590/ed346189-06f0-4cbe-8a20-dc1edf804908/Group.png" alt="Doraji" style="height:48px;object-fit:contain;margin-bottom:8px">
+    <div style="font-size:12px;color:#7a6e65;margin-bottom:4px">at The Well · 444 Front St W, Toronto</div>
+    <div style="font-size:11px;color:#7a6e65;margin-bottom:24px;padding-bottom:20px;border-bottom:1px solid #ddd8d0">Sales Planner — Staff Access</div>
+    <input id="pwInput" type="password" placeholder="Enter password" style="width:100%;background:#f5f3ef;border:1px solid #ddd8d0;border-radius:8px;color:#1a1410;padding:11px 14px;font-size:14px;font-family:inherit;outline:none;margin-bottom:10px;transition:border-color 0.15s" onkeydown="if(event.key==='Enter')checkPassword()">
+    <div id="pwError" style="font-size:12px;color:#c82828;min-height:18px;margin-bottom:10px"></div>
+    <button onclick="checkPassword()" style="width:100%;background:#c4903a;border:none;border-radius:8px;color:#fff;font-size:14px;font-weight:700;padding:11px;cursor:pointer;transition:background 0.15s" onmouseover="this.style.background='#b07e28'" onmouseout="this.style.background='#c4903a'">Unlock</button>
   </div>
 </div>
 
@@ -465,9 +474,10 @@
 <!-- HEADER -->
 <header>
   <div class="header-left">
+    <img src="https://images.squarespace-cdn.com/content/v1/65654564baf839246fcc8590/ed346189-06f0-4cbe-8a20-dc1edf804908/Group.png" alt="Doraji" style="height:36px;object-fit:contain;">
     <div>
-      <div class="logo">Doraji <span>at The Well</span></div>
-      <div class="subtitle">444 Front St W, Toronto &nbsp;·&nbsp; Daily Sales Forecast &amp; Scheduler</div>
+      <div class="subtitle" style="font-size:13px;font-weight:600;color:var(--text)">Daily Sales Forecast &amp; Scheduler</div>
+      <div class="subtitle">444 Front St W, Toronto</div>
     </div>
   </div>
   <div class="header-right">
@@ -525,11 +535,11 @@
     <div>
       <div class="panel-title">Event Filters</div>
       <div class="filter-list">
-        <label class="filter-item"><input type="checkbox" checked id="fSports" onchange="renderCalendar()"> Sports Games <span class="filter-badge" style="background:#1e3a52;color:#38bdf8" id="bSports">0</span></label>
-        <label class="filter-item"><input type="checkbox" checked id="fConcert" onchange="renderCalendar()"> Concerts / Shows <span class="filter-badge" style="background:#2d1f4a;color:#a78bfa" id="bConcert">0</span></label>
-        <label class="filter-item"><input type="checkbox" checked id="fFestival" onchange="renderCalendar()"> Festivals <span class="filter-badge" style="background:#3d2008;color:#fb923c" id="bFestival">0</span></label>
-        <label class="filter-item"><input type="checkbox" checked id="fHoliday" onchange="renderCalendar()"> Holidays <span class="filter-badge" style="background:#3d0a14;color:#f43f5e" id="bHoliday">0</span></label>
-        <label class="filter-item"><input type="checkbox" checked id="fCustom" onchange="renderCalendar()"> My Events <span class="filter-badge" style="background:#0f2d1a;color:#22c55e" id="bCustom">0</span></label>
+        <label class="filter-item"><input type="checkbox" checked id="fSports" onchange="renderCalendar()"> Sports Games <span class="filter-badge" style="background:#dbeeff;color:#1a72b8" id="bSports">0</span></label>
+        <label class="filter-item"><input type="checkbox" checked id="fConcert" onchange="renderCalendar()"> Concerts / Shows <span class="filter-badge" style="background:#ede8ff;color:#6d44c0" id="bConcert">0</span></label>
+        <label class="filter-item"><input type="checkbox" checked id="fFestival" onchange="renderCalendar()"> Festivals <span class="filter-badge" style="background:#fff0e0;color:#b85c0a" id="bFestival">0</span></label>
+        <label class="filter-item"><input type="checkbox" checked id="fHoliday" onchange="renderCalendar()"> Holidays <span class="filter-badge" style="background:#ffe0e6;color:#b81030" id="bHoliday">0</span></label>
+        <label class="filter-item"><input type="checkbox" checked id="fCustom" onchange="renderCalendar()"> My Events <span class="filter-badge" style="background:#e0f5e6;color:#2a7a3a" id="bCustom">0</span></label>
       </div>
     </div>
 
