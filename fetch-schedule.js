@@ -76,8 +76,8 @@ async function fetchShiftsForScheduler(schedulerId, startDate, endDate) {
   let cursor = null;
   do {
     const params = new URLSearchParams({
-      startTime: startDate + 'T00:00:00',
-      endTime:   endDate   + 'T23:59:59',
+      startTime: Math.floor(new Date(startDate + 'T00:00:00').getTime() / 1000),
+      endTime:   Math.floor(new Date(endDate   + 'T23:59:59').getTime() / 1000),
       limit: 200,
       ...(cursor ? { cursor } : {})
     });
