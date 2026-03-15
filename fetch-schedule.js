@@ -35,15 +35,19 @@ function toTorontoDate(isoStr) {
   return new Date(isoStr).toLocaleDateString('en-CA', { timeZone: 'America/Toronto' });
 }
 
-function getDeptType(shift) {
-  const text = (
+function getDeptType(shift, jobMap = {}) {
+  // First try to classify using the job's department (most reliable)
+  const jobId   = shift.jobId || shift.job?.id;
+  const jobDept = jobId ? (jobMap[jobId] || '') : '';
+
+  const text = (jobDept ||
     shift.title || shift.departmentName || shift.department?.name ||
     shift.department || shift.job?.departmentName || shift.job?.name || ''
   ).toLowerCase();
 
   // Front of House positions
   if (text.includes('server') || text.includes('assistant general manager') ||
-      text.includes('foh') || text.includes('front')) return 'foh';
+      text.includes('foh') || text.includes('front of house') || text.includes('front')) return 'foh';
 
   // Kitchen positions
   if (text.includes('head cook') || text.includes('kitchen staff') ||
@@ -67,6 +71,23 @@ async function fetchSchedulers() {
   if (status !== 200) throw new Error(`Schedulers fetch returned ${status}: ${JSON.stringify(data).slice(0, 200)}`);
   const raw = (data.data && data.data.schedulers) || data.schedulers || data.data || [];
   return Array.isArray(raw) ? raw : [];
+}
+
+async function fetchJobMap(schedulerId) {
+  // Fetch jobs to get jobId → department mapping
+  const { status, data } = await connecteamRequest('GET', `/scheduler/v1/schedulers/${schedulerId}/jobs`);
+  console.log('Jobs API response:', JSON.stringify(data).slice(0, 600));
+  if (status !== 200) { console.warn('Could not fetch jobs:', status); return {}; }
+  const inner = data.data || data;
+  const jobs  = inner.jobs || inner.data || (Array.isArray(inner) ? inner : []);
+  const map   = {};
+  for (const job of jobs) {
+    const id   = job.id || job.jobId || job._id;
+    const dept = (job.departmentName || job.department?.name || job.department || job.name || '').toLowerCase();
+    if (id) map[id] = dept;
+  }
+  console.log('Job→dept map:', JSON.stringify(map).slice(0, 400));
+  return map;
 }
 
 async function fetchShiftsForMonth(schedulerId, startDate, endDate) {
@@ -136,12 +157,9 @@ async function main() {
   for (const scheduler of schedulers) {
     const id = scheduler.schedulerId || scheduler.id || scheduler._id;
     console.log(`Fetching shifts for: ${scheduler.name || id} (id: ${id})`);
+    const jobMap = await fetchJobMap(id);
     const shifts = await fetchAllShifts(id, startDate, endDate);
     console.log(`Total: ${shifts.length} shifts`);
-
-    // Log all unique titles found so we can verify classification
-    const uniqueTitles = [...new Set(shifts.map(s => s.title || s.departmentName || s.department || '(none)'))];
-    console.log('Unique shift titles found:', uniqueTitles);
 
     for (const shift of shifts) {
       const assignedUsers = shift.assignedUserIds || shift.users || (shift.userId ? [shift.userId] : []);
@@ -151,7 +169,7 @@ async function main() {
       const date = toTorontoDate(new Date(startMs).toISOString());
       if (!daily[date]) daily[date] = { headcount: 0, foh: 0, boh: 0, other: 0, totalHours: 0 };
 
-      const type  = getDeptType(shift);
+      const type  = getDeptType(shift, jobMap);
       const hours = calcHours(shift);
       const count = assignedUsers.length;
 
