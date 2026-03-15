@@ -139,6 +139,10 @@ async function main() {
     const shifts = await fetchAllShifts(id, startDate, endDate);
     console.log(`Total: ${shifts.length} shifts`);
 
+    // Log all unique titles found so we can verify classification
+    const uniqueTitles = [...new Set(shifts.map(s => s.title || s.departmentName || s.department || '(none)'))];
+    console.log('Unique shift titles found:', uniqueTitles);
+
     for (const shift of shifts) {
       const assignedUsers = shift.assignedUserIds || shift.users || (shift.userId ? [shift.userId] : []);
       if (!assignedUsers || assignedUsers.length === 0) continue;
