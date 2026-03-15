@@ -396,6 +396,11 @@
       <input class="form-input" id="setTmKey" type="text" placeholder="Paste your Consumer Key here">
       <div id="tmStatus" style="margin-top:6px;font-size:11px;min-height:18px"></div>
     </div>
+    <div class="form-group">
+      <label class="form-label">Square Access Token</label>
+      <input class="form-input" id="setSquareKey" type="password" placeholder="EAAAl...">
+      <div id="squareStatus" style="margin-top:6px;font-size:11px;min-height:18px"></div>
+    </div>
     <div class="modal-actions">
       <button class="btn" onclick="closeModal('settingsModal')">Cancel</button>
       <button class="btn btn-accent" onclick="saveSettings()">Save</button>
@@ -939,75 +944,103 @@ function scoreToDailySales(score) {
 }
 
 function predictDay(d) {
+  // Past dates with actual Square data — show real numbers
+  if (d < TODAY) {
+    const actual = getActualSales(d);
+    if (actual !== null) return { sales: actual, score: Math.min(100, Math.max(2, Math.round((actual - 1200) / 24))), factors: [], actual: true };
+  }
+
+  const dowNames   = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+  const monthNames = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  const cal        = settings.calibration;
+
+  if (cal && cal.overall > 0) {
+    // ── DATA-DRIVEN PREDICTION (calibrated from Square history) ──────
+    const dow   = d.getDay();
+    const month = d.getMonth();
+    const factors = [];
+
+    // 1. Base = overall average daily sales
+    let base = cal.overall;
+
+    // 2. Day-of-week multiplier (from actual averages per weekday)
+    const dowMult  = cal.dowAvgs[dow] / cal.overall;
+    const dowDelta = Math.round(cal.dowAvgs[dow] - cal.overall);
+    base *= dowMult;
+    factors.push({ label: `Day: ${dowNames[dow]} (avg ${fmtMoney(Math.round(cal.dowAvgs[dow]))})`, delta: dowDelta, cls: dowDelta > 50 ? 'pos' : dowDelta < -50 ? 'neg' : 'neu' });
+
+    // 3. Seasonal multiplier (monthly averages from actual data)
+    const monthMult  = cal.monthAvgs[month] > 0 ? cal.monthAvgs[month] / cal.overall : 1;
+    const monthDelta = Math.round((monthMult - 1) * base);
+    base *= monthMult;
+    if (Math.abs(monthDelta) > 30) factors.push({ label: `Season: ${monthNames[month]}`, delta: monthDelta, cls: monthDelta > 50 ? 'pos' : monthDelta < -50 ? 'neg' : 'neu' });
+
+    // 4. Weather multiplier (correlated from historical weather × actual sales)
+    const w = getWeather(d);
+    if (w && cal.tempMult && cal.condMult) {
+      const t  = w.maxTemp, c = w.code;
+      const ti = t < -10 ? 0 : t < 0 ? 1 : t < 5 ? 2 : t < 12 ? 3 : t < 18 ? 4 : t < 26 ? 5 : 6;
+      const ci = c <= 2 ? 0 : c <= 3 ? 1 : c <= 55 ? 2 : c <= 67 ? 3 : c <= 77 ? 4 : 5;
+      const wMult  = (cal.tempMult[ti] + cal.condMult[ci]) / 2;
+      const wDelta = Math.round(base * (wMult - 1));
+      base *= wMult;
+      factors.push({ label: `Weather: ${wmoIcon(c)} ${wmoDesc(c)}, ${t}°C`, delta: wDelta, cls: wDelta > 50 ? 'pos' : wDelta < -50 ? 'neg' : 'neu' });
+    }
+
+    // 5. Event adjustments
+    const events = getEventsForDate(d);
+    const HOME_TEAMS = ['raptors', 'maple leafs', 'blue jays'];
+    const hasHomeGame = events.some(e => e.type === 'sports' && HOME_TEAMS.some(t => e.name.toLowerCase().includes(t)));
+    const hasClosure  = events.some(e => e.type === 'closure');
+
+    if (hasClosure) {
+      base *= 0.1;
+      factors.push({ label: 'Closed', delta: Math.round(base * -0.9), cls: 'neg' });
+    } else if (hasHomeGame && cal.eventLift > 1) {
+      const evDelta = Math.round(base * (cal.eventLift - 1));
+      base *= cal.eventLift;
+      factors.push({ label: `Home game (+${((cal.eventLift - 1) * 100).toFixed(0)}% lift from data)`, delta: evDelta, cls: 'pos' });
+    } else if (events.length > 0) {
+      const evDelta = events.length * 80;
+      base += evDelta;
+      factors.push({ label: `${events.length} nearby event(s)`, delta: evDelta, cls: 'pos' });
+    }
+
+    const sales    = Math.round(Math.max(400, base) / 50) * 50;
+    const salesLow = Math.max(400, Math.round(sales * 0.90 / 50) * 50);
+    const salesHigh = Math.round(sales * 1.12 / 50) * 50;
+    const score    = Math.min(100, Math.max(2, Math.round((sales - 1200) / 24)));
+    return { score, sales, salesLow, salesHigh, factors };
+  }
+
+  // ── FALLBACK: original score-based prediction (no Square data yet) ──
   let score = 50;
   const factors = [];
-
-  // Day of week — calibrated to Doraji's actual sales history at The Well
-  // Sun/Mon: worst days ($1,800–$2,200). Tue–Thu: office workers drive strong consistency ($2,300–$2,800).
-  // Fri: modest lift, not a dramatic jump. Sat: event/weather dependent, base is neutral-low.
   const dow = d.getDay();
-  const dowScores = [-20, -20, 0, 2, 3, 5, -2]; // Sun Mon Tue Wed Thu Fri Sat
-  const dowNames  = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+  const dowScores = [-20, -20, 0, 2, 3, 5, -2];
   const dv = dowScores[dow];
   score += dv;
   factors.push({ label: `Day of week: ${dowNames[dow]}`, delta: scoreToDailySales(50+dv) - scoreToDailySales(50), cls: dv>0?'pos':dv<0?'neg':'neu' });
-
-  // Month / season — patio & foot traffic seasonality
   const mv = [-2,-4,0,1,3,5,6,6,4,2,0,-1][d.getMonth()];
   score += mv;
-
-  // Weather — adjusted for The Well (indoor mall, reduced rain/snow penalty)
   const w = getWeather(d);
   let wScore = 0;
   if (w) {
     const t = w.maxTemp, c = w.code;
-    // Temperature — conservative, $100–$200 max lift for ideal conditions
-    if (t>=18&&t<=26) wScore+=4;     // ideal temp
-    else if (t>26) wScore+=2;        // hot summer day
-    else if (t>=12&&t<18) wScore+=2; // comfortable
-    else if (t>=5&&t<12) wScore-=2;
-    else if (t>=0&&t<5) wScore-=5;
-    else if (t>=-10&&t<0) wScore-=9;
-    else if (t<-10) wScore-=14;      // extreme cold reduces commuting
-    // Condition — indoor venue dampens weather effects; clear days still pull people out
-    if (c===0) wScore+=3;            // clear sky
-    else if (c<=2) wScore+=2;        // mainly clear / partly cloudy
-    else if (c===3) wScore+=0;       // overcast — neutral for indoor
-    else if (c<=49) wScore-=2;
-    else if (c<=55) wScore-=4;       // drizzle
-    else if (c<=67) wScore-=7;       // rain
-    else if (c<=77) wScore-=10;      // snow — hurts commuting
-    else if (c<=86) wScore-=8;
-    else wScore-=12;                 // thunderstorm
+    if (t>=18&&t<=26) wScore+=4; else if (t>26) wScore+=2; else if (t>=12&&t<18) wScore+=2;
+    else if (t>=5&&t<12) wScore-=2; else if (t>=0&&t<5) wScore-=5; else if (t>=-10&&t<0) wScore-=9; else if (t<-10) wScore-=14;
+    if (c===0) wScore+=3; else if (c<=2) wScore+=2; else if (c<=49) wScore-=2; else if (c<=55) wScore-=4;
+    else if (c<=67) wScore-=7; else if (c<=77) wScore-=10; else if (c<=86) wScore-=8; else wScore-=12;
     score += wScore;
-    const wDelta = scoreToDailySales(50+wScore) - scoreToDailySales(50);
-    factors.push({ label: `Weather: ${wmoIcon(c)} ${wmoDesc(c)}, ${t}°C`, delta: wDelta, cls: wScore>3?'pos':wScore<-3?'neg':'neu' });
+    factors.push({ label: `Weather: ${wmoIcon(c)} ${wmoDesc(c)}, ${t}°C`, delta: scoreToDailySales(50+wScore)-scoreToDailySales(50), cls: wScore>3?'pos':wScore<-3?'neg':'neu' });
   }
-
-  // Nearby events — Scotiabank Arena is the biggest driver (~2km)
   const events = getEventsForDate(d);
   let evScore = 0;
-  for (const ev of events) {
-    if (ev.type === 'closure') { evScore -= 30; continue; }
-    // Conservative — only nearby venues included; small lift per event
-    const base = ev.impact==='high' ? 4
-               : ev.impact==='medium' ? 5
-               : ev.impact==='low' ? 2 : -20;
-    evScore += base;
-  }
-  if (events.length > 0) {
-    score += evScore;
-    const evDelta = scoreToDailySales(50+evScore) - scoreToDailySales(50);
-    factors.push({ label: `${events.length} event(s) in area`, delta: evDelta, cls: evScore>0?'pos':'neg' });
-  }
-
-  // Clamp score
+  for (const ev of events) { if (ev.type==='closure') { evScore-=30; continue; } evScore += ev.impact==='high'?4:ev.impact==='medium'?5:ev.impact==='low'?2:-20; }
+  if (events.length > 0) { score += evScore; factors.push({ label: `${events.length} event(s) in area`, delta: scoreToDailySales(50+evScore)-scoreToDailySales(50), cls: evScore>0?'pos':'neg' }); }
   score = Math.max(2, Math.min(100, Math.round(score)));
   const sales = scoreToDailySales(score);
-  const salesLow  = Math.max(800,  sales - 200);
-  const salesHigh = sales + 250;
-
-  return { score, sales, salesLow, salesHigh, factors };
+  return { score, sales, salesLow: Math.max(800, sales-200), salesHigh: sales+250, factors };
 }
 
 function salesColor(sales) {
@@ -1103,8 +1136,11 @@ function renderMonth() {
       const more=events.length-2;
       html+=`<div class="${cls}" onclick="selectDate('${k}')">`;
       html+=`<div class="cell-date-num">${d.getDate()}</div>`;
+      const sqDay = d < TODAY ? squareSales[k] : null;
+      const hasAct = sqDay && typeof sqDay === 'object';
       html+=`<div class="cell-sales-bar" style="background:${color};width:${score}%"></div>`;
-      html+=`<div class="cell-sales-amt" style="color:${color}">${fmtMoney(sales)}</div>`;
+      html+=`<div class="cell-sales-amt" style="color:${color}">${fmtMoney(sales)}${hasAct?'<span style="font-size:8px;opacity:0.6;margin-left:3px">GRS</span>':''}</div>`;
+      if (hasAct && sqDay.net != null) html+=`<div style="font-size:9px;color:var(--text-muted);margin-bottom:2px">Net ${fmtMoney(sqDay.net)}</div>`;
       if(w) html+=`<div class="cell-weather-row"><span class="cell-weather-icon">${wmoIcon(w.code)}</span><span class="cell-temp">${w.maxTemp}°/${w.minTemp}°</span></div>`;
       html+=`<div class="cell-events">${chips}${more>0?`<div style="font-size:9px;color:var(--text-muted)">+${more} more</div>`:''}</div>`;
       html+=`<div class="cell-tier-badge" style="background:${color}22;color:${color}">${shortLbl}</div>`;
@@ -1211,24 +1247,42 @@ function updateRightPanel() {
   document.getElementById('rpTitle').textContent = d.toLocaleDateString('en-CA',{weekday:'long',month:'long',day:'numeric'});
   document.getElementById('rpSub').textContent = `${d.getFullYear()} · Doraji at The Well`;
 
-  // Sales forecast
-  const {sales, salesLow, salesHigh, factors} = predictDay(d);
+  // Sales — show actuals for past dates, forecast for future
+  const {sales, salesLow, salesHigh, factors, actual} = predictDay(d);
+  const sqDay = squareSales[dateKey(d)];
+  const hasActual = actual && sqDay && typeof sqDay === 'object';
+
   drawGauge(sales);
   const color = salesColor(sales);
-  const hex   = salesColorHex(sales);
   document.getElementById('rpSalesAmt').textContent = fmtMoney(sales);
   document.getElementById('rpSalesAmt').style.color = color;
-  document.getElementById('rpSalesRange').textContent = `Likely range: ${fmtMoney(salesLow)} – ${fmtMoney(salesHigh)}`;
-  document.getElementById('rpSalesCat').textContent = salesLabel(sales);
-  document.getElementById('rpSalesCat').style.color = color;
-  document.getElementById('rpSalesDesc').textContent = salesDesc(sales);
 
-  // Factor breakdown
-  document.getElementById('rpFactors').innerHTML = factors.map(f=>`
-    <div class="factor-row">
-      <span class="factor-label">${f.label}</span>
-      <span class="factor-val ${f.cls}">${fmtMoneyDiff(f.delta)}</span>
-    </div>`).join('');
+  if (hasActual) {
+    const net      = sqDay.net   ?? sqDay.gross;
+    const refunds  = sqDay.refunds || 0;
+    const txCount  = sqDay.txCount || 0;
+    const avgTx    = txCount > 0 ? sqDay.gross / txCount : 0;
+    document.getElementById('rpSalesRange').textContent = `Net sales: ${fmtMoney(net)}`;
+    document.getElementById('rpSalesCat').textContent   = 'Actual · Square POS';
+    document.getElementById('rpSalesCat').style.color   = color;
+    document.getElementById('rpSalesDesc').textContent  = '';
+    document.getElementById('rpFactors').innerHTML = `
+      <div class="factor-row"><span class="factor-label">Gross Sales</span><span class="factor-val" style="color:var(--text)">${fmtMoney(sqDay.gross)}</span></div>
+      ${refunds > 0 ? `<div class="factor-row"><span class="factor-label">Refunds</span><span class="factor-val neg">−${fmtMoney(refunds)}</span></div>` : ''}
+      <div class="factor-row"><span class="factor-label">Net Sales</span><span class="factor-val pos">${fmtMoney(net)}</span></div>
+      <div class="factor-row"><span class="factor-label">Transactions</span><span class="factor-val" style="color:var(--text)">${txCount}</span></div>
+      ${txCount > 0 ? `<div class="factor-row"><span class="factor-label">Avg Transaction</span><span class="factor-val" style="color:var(--text)">${fmtMoney(avgTx)}</span></div>` : ''}`;
+  } else {
+    document.getElementById('rpSalesRange').textContent = salesLow && salesHigh ? `Likely range: ${fmtMoney(salesLow)} – ${fmtMoney(salesHigh)}` : 'Estimated range';
+    document.getElementById('rpSalesCat').textContent   = salesLabel(sales);
+    document.getElementById('rpSalesCat').style.color   = color;
+    document.getElementById('rpSalesDesc').textContent  = salesDesc(sales);
+    document.getElementById('rpFactors').innerHTML = factors.map(f=>`
+      <div class="factor-row">
+        <span class="factor-label">${f.label}</span>
+        <span class="factor-val ${f.cls}">${fmtMoneyDiff(f.delta)}</span>
+      </div>`).join('');
+  }
 
   // Weather
   const w = getWeather(d);
@@ -1366,39 +1420,45 @@ function openSettingsModal() {
   document.getElementById('setStrong').value = settings.strong      || 2600;
   document.getElementById('setLow').value    = settings.low         || 2200;
   document.getElementById('setBad').value    = settings.bad         || 2000;
-  document.getElementById('setTmKey').value  = settings.tmKey  || '';
-  updateTMStatus('ok'); // show current cache state
+  document.getElementById('setTmKey').value     = settings.tmKey     || '';
+  document.getElementById('setSquareKey').value = settings.squareKey || '';
+  updateTMStatus('ok');
+  updateSquareStatus('ok');
   openModal('settingsModal');
 }
 
-function saveSettings() {
-  const prevKey        = settings.tmKey;
-  settings.exceptional = parseFloat(document.getElementById('setHigh').value)   || 2900;
-  settings.strong      = parseFloat(document.getElementById('setStrong').value) || 2600;
-  settings.low         = parseFloat(document.getElementById('setLow').value)    || 2200;
-  settings.bad         = parseFloat(document.getElementById('setBad').value)    || 2000;
-  settings.tmKey       = document.getElementById('setTmKey').value.trim();
-  // If the key changed, wipe the TM cache so stale data from the old key isn't shown
-  if (settings.tmKey !== prevKey) {
-    tmEvents = [];
-    try { localStorage.removeItem(TM_CACHE_KEY); } catch(e) {}
-  }
-  localStorage.setItem('doraji_settings', JSON.stringify(settings));
-  // Re-apply calibration
-  SALES_EXCEPTIONAL = settings.exceptional;
-  SALES_STRONG      = settings.strong;
-  SALES_MIN         = settings.low;
-  SALES_BAD         = settings.bad;
-  // Update tier labels
+function updateTierDisplay() {
   document.getElementById('tierExc').textContent    = `${fmtMoney(SALES_EXCEPTIONAL)}+`;
   document.getElementById('tierStrong').textContent = `${fmtMoney(SALES_STRONG)}–${fmtMoney(SALES_EXCEPTIONAL)}`;
   document.getElementById('tierAvg').textContent    = `${fmtMoney(SALES_MIN)}–${fmtMoney(SALES_STRONG)}`;
   document.getElementById('tierBelow').textContent  = `${fmtMoney(SALES_BAD)}–${fmtMoney(SALES_MIN)}`;
   document.getElementById('tierSlow').textContent   = `<${fmtMoney(SALES_BAD)}`;
+}
+
+function saveSettings() {
+  const prevTmKey     = settings.tmKey;
+  const prevSquareKey = settings.squareKey;
+  settings.exceptional = parseFloat(document.getElementById('setHigh').value)   || 2900;
+  settings.strong      = parseFloat(document.getElementById('setStrong').value) || 2600;
+  settings.low         = parseFloat(document.getElementById('setLow').value)    || 2200;
+  settings.bad         = parseFloat(document.getElementById('setBad').value)    || 2000;
+  settings.tmKey       = document.getElementById('setTmKey').value.trim();
+  settings.squareKey   = document.getElementById('setSquareKey').value.trim();
+  if (settings.tmKey !== prevTmKey) {
+    tmEvents = [];
+    try { localStorage.removeItem(TM_CACHE_KEY); } catch(e) {}
+  }
+  localStorage.setItem('doraji_settings', JSON.stringify(settings));
+  SALES_EXCEPTIONAL = settings.exceptional;
+  SALES_STRONG      = settings.strong;
+  SALES_MIN         = settings.low;
+  SALES_BAD         = settings.bad;
+  updateTierDisplay();
   closeModal('settingsModal');
   renderCalendar(); updateRightPanel(); updateTodayStats();
   showToast('Settings saved!','success');
-  if (settings.tmKey) fetchTicketmaster(settings.tmKey !== prevKey);
+  if (settings.tmKey) fetchTicketmaster(settings.tmKey !== prevTmKey);
+  if (settings.squareKey) fetchSquareSales(settings.squareKey !== prevSquareKey);
 }
 
 // ─── TICKETMASTER ─────────────────────────────────────────────────
@@ -1440,8 +1500,8 @@ function classifyTMEvent(e) {
     const isProVenue    = TM_SPORT_VENUES.some(v => venue.includes(v));
     return (isProTeam || isProVenue) ? 'sports' : null;
   }
-  if (seg === 'music')              return 'concert';
-  if (seg === 'arts & theatre')     return 'concert';
+  if (seg === 'music' || seg === 'arts & theatre')
+    return venue.includes('scotiabank') ? 'concert' : null;
   if (seg === 'miscellaneous')      return 'festival';
   return null;
 }
@@ -1529,6 +1589,142 @@ async function fetchTicketmaster(forceRefresh = false) {
   }
 }
 
+// ─── SQUARE ───────────────────────────────────────────────────────
+const SQUARE_API       = 'https://connect.squareup.com/v2';
+const SQUARE_LOC       = 'LAN90KWFK5QXV';
+const SQUARE_DAILY_KEY = 'doraji_square_daily';
+const SQUARE_SYNC_KEY  = 'doraji_square_sync';
+const SQUARE_CACHE_TTL = 24 * 60 * 60 * 1000;
+
+let squareSales = JSON.parse(localStorage.getItem(SQUARE_DAILY_KEY) || '{}');
+
+function isSquareCacheValid() {
+  try {
+    const s = JSON.parse(localStorage.getItem(SQUARE_SYNC_KEY) || 'null');
+    return !!(s && (Date.now() - s.ts) < SQUARE_CACHE_TTL);
+  } catch(e) { return false; }
+}
+
+function getActualSales(d) {
+  const s = squareSales[dateKey(d)];
+  if (s == null) return null;
+  return typeof s === 'number' ? s : (s.gross ?? null); // handle legacy and new format
+}
+
+async function fetchSquareSales(forceRefresh = false) {
+  if (!forceRefresh && isSquareCacheValid()) return;
+  updateSquareStatus('loading');
+  try {
+    const res = await fetch('sales-data.json?t=' + Date.now());
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    if (!data.days || Object.keys(data.days).length === 0) {
+      updateSquareStatus('empty');
+      return;
+    }
+    squareSales = data.days;
+    localStorage.setItem(SQUARE_DAILY_KEY, JSON.stringify(squareSales));
+    localStorage.setItem(SQUARE_SYNC_KEY, JSON.stringify({ ts: Date.now(), count: Object.keys(squareSales).length, updatedAt: data.updatedAt }));
+    calibrateFromSquare();
+    renderCalendar(); updateRightPanel(); updateTodayStats(); renderHomeGames();
+    updateSquareStatus('ok');
+    showToast(`Loaded ${Object.keys(squareSales).length} days of sales data!`, 'success');
+  } catch(err) {
+    console.warn('Sales data load failed:', err.message);
+    updateSquareStatus('error');
+    showToast('Could not load sales-data.json — ensure the GitHub Action has run', 'error');
+  }
+}
+
+function calibrateFromSquare() {
+  const getGross = k => { const s = squareSales[k]; return typeof s === 'number' ? s : (s?.gross ?? 0); };
+  const validDates = Object.keys(squareSales).filter(k => getGross(k) > 200);
+  if (validDates.length < 14) return;
+
+  const allVals = validDates.map(k => getGross(k)).sort((a, b) => a - b);
+  const pct = p => allVals[Math.floor(allVals.length * p)];
+
+  // --- Sales tier thresholds from real percentiles ---
+  SALES_BAD         = Math.round(pct(0.10) / 50) * 50;
+  SALES_MIN         = Math.round(pct(0.25) / 50) * 50;
+  SALES_STRONG      = Math.round(pct(0.75) / 50) * 50;
+  SALES_EXCEPTIONAL = Math.round(pct(0.90) / 50) * 50;
+
+  const overall = allVals.reduce((a, b) => a + b, 0) / allVals.length;
+
+  // --- Day-of-week averages ---
+  const dowBuckets = Array.from({length: 7}, () => []);
+  for (const k of validDates) dowBuckets[parseKey(k).getDay()].push(getGross(k));
+  const dowAvgs = dowBuckets.map(b => b.length > 2 ? b.reduce((a, c) => a + c, 0) / b.length : overall);
+
+  // --- Monthly averages ---
+  const monthBuckets = Array.from({length: 12}, () => []);
+  for (const k of validDates) monthBuckets[parseKey(k).getMonth()].push(getGross(k));
+  const monthAvgs = monthBuckets.map(b => b.length > 2 ? b.reduce((a, c) => a + c, 0) / b.length : overall);
+
+  // --- Weather correlation (DOW-normalized to remove confounding) ---
+  // Temp buckets:  <-10 | -10–0 | 0–5 | 5–12 | 12–18 | 18–26 | >26
+  // Cond buckets:  clear(0-2) | cloudy(3) | fog/drizzle(45-55) | rain(61-67) | snow(71-77) | storms(80+)
+  const tempBuckets = Array.from({length: 7}, () => []);
+  const condBuckets = Array.from({length: 6}, () => []);
+
+  for (const k of validDates) {
+    const w = historicalWeather[k];
+    if (!w) continue;
+    const norm = getGross(k) / dowAvgs[parseKey(k).getDay()]; // remove DOW effect
+    const t = w.maxTemp;
+    tempBuckets[t < -10 ? 0 : t < 0 ? 1 : t < 5 ? 2 : t < 12 ? 3 : t < 18 ? 4 : t < 26 ? 5 : 6].push(norm);
+    const c = w.code;
+    condBuckets[c <= 2 ? 0 : c <= 3 ? 1 : c <= 55 ? 2 : c <= 67 ? 3 : c <= 77 ? 4 : 5].push(norm);
+  }
+
+  const bMult = (b, fallback = 1) => b.length >= 3 ? b.reduce((a, c) => a + c, 0) / b.length : fallback;
+  const tempMult = tempBuckets.map(b => bMult(b));
+  const condMult = condBuckets.map(b => bMult(b));
+
+  // --- Home game lift (Raptors / Leafs / Blue Jays vs comparable non-game days) ---
+  const HOME_TEAMS = ['raptors', 'maple leafs', 'blue jays'];
+  const gameDates  = new Set(allEvents
+    .filter(e => e.type === 'sports' && HOME_TEAMS.some(t => e.name.toLowerCase().includes(t)))
+    .map(e => e.date));
+  const gameVals   = validDates.filter(k => gameDates.has(k))
+    .map(k => getGross(k) / dowAvgs[parseKey(k).getDay()]);
+  const noGameVals = validDates.filter(k => !gameDates.has(k))
+    .map(k => getGross(k) / dowAvgs[parseKey(k).getDay()]);
+  const gameMult   = gameVals.length   >= 3 ? gameVals.reduce((a, c)   => a + c, 0) / gameVals.length   : 1;
+  const noGameBase = noGameVals.length >= 3 ? noGameVals.reduce((a, c) => a + c, 0) / noGameVals.length : 1;
+  const eventLift  = noGameBase > 0 ? gameMult / noGameBase : 1;
+
+  const calibration = { overall, dowAvgs, monthAvgs, tempMult, condMult, eventLift, sampleSize: validDates.length, ts: Date.now() };
+  settings.calibration = calibration;
+  settings.bad = SALES_BAD; settings.low = SALES_MIN; settings.strong = SALES_STRONG; settings.exceptional = SALES_EXCEPTIONAL;
+  localStorage.setItem('doraji_settings', JSON.stringify(settings));
+  updateTierDisplay();
+  console.log('Doraji calibration:', { overall: Math.round(overall), dowAvgs: dowAvgs.map(Math.round), eventLift: eventLift.toFixed(2), tempMult: tempMult.map(v => v.toFixed(2)), condMult: condMult.map(v => v.toFixed(2)) });
+}
+
+function updateSquareStatus(state) {
+  const el = document.getElementById('squareStatus');
+  if (!el) return;
+  if (!settings.squareKey) { el.innerHTML = ''; return; }
+  if (state === 'loading') { el.innerHTML = '<span style="color:var(--text-muted)">Loading sales data…</span>'; return; }
+  if (state === 'error')   { el.innerHTML = '<span style="color:var(--slow)">Load failed — ensure GitHub Action has run.</span>'; return; }
+  if (state === 'empty')   { el.innerHTML = '<span style="color:var(--text-muted)">No data yet — trigger the GitHub Action manually.</span>'; return; }
+  try {
+    const s = JSON.parse(localStorage.getItem(SQUARE_SYNC_KEY) || 'null');
+    if (!s) {
+      el.innerHTML = `<span style="color:var(--text-muted)">Not yet synced.</span>
+        <button onclick="fetchSquareSales(true)" class="btn btn-sm" style="margin-left:6px">Sync Now</button>`;
+      return;
+    }
+    const mins = Math.round((Date.now() - s.ts) / 60000);
+    const age  = mins < 60 ? `${mins}m ago` : `${Math.round(mins/60)}h ago`;
+    el.innerHTML = `<span style="color:var(--exceptional)">✓ ${s.count} days synced</span>
+      <span style="color:var(--text-muted)">&nbsp;· updated ${age}</span>
+      <button onclick="fetchSquareSales(true)" class="btn btn-sm" style="margin-left:6px">Refresh</button>`;
+  } catch(e) {}
+}
+
 // ─── HISTORICAL WEATHER ───────────────────────────────────────────
 const HIST_WEATHER_CACHE_KEY = 'doraji_hist_weather_cache';
 const HIST_WEATHER_CACHE_TTL = 7 * 24 * 60 * 60 * 1000; // 7 days — archive data never changes
@@ -1607,7 +1803,7 @@ if (sessionStorage.getItem('doraji_auth') === '1') {
 
 // ─── INIT ─────────────────────────────────────────────────────────
 function init() {
-  // Pre-load API key if not already saved
+  // Pre-load API keys if not already saved
   if (!settings.tmKey) {
     settings.tmKey = 'N1j4dLYaqC1ZGrPHSJxekfC7YAtVRdgT';
     localStorage.setItem('doraji_settings', JSON.stringify(settings));
@@ -1620,9 +1816,11 @@ function init() {
   fetchWeather();
   fetchHistoricalWeather();   // Open-Meteo archive — last 2 years, 7-day cache
   if (settings.tmKey) fetchTicketmaster();
+  fetchSquareSales();
   // Auto-refresh: check every hour, fetch if 24h cache has expired
   setInterval(() => {
     if (settings.tmKey && !isTMCacheValid()) fetchTicketmaster();
+    if (!isSquareCacheValid()) fetchSquareSales();
   }, 60 * 60 * 1000);
 }
 
