@@ -515,6 +515,101 @@
   </div>
 </div>
 
+<!-- LEGEND OVERLAY -->
+<div class="db-overlay" id="legendOverlay">
+  <div class="db-header">
+    <div>
+      <div class="db-title">Legend &amp; Reference</div>
+      <div class="db-sub">How predictions, payroll, and scheduling work</div>
+    </div>
+    <button class="btn" onclick="closeLegend()">✕ Close</button>
+  </div>
+  <div class="db-body">
+
+    <div class="db-section">
+      <div class="db-section-title">Sales Performance Bands</div>
+      <table class="db-table">
+        <thead><tr><th>Label</th><th>Daily Net Sales</th><th>Colour</th></tr></thead>
+        <tbody>
+          <tr><td><strong style="color:var(--exceptional)">Exceptional</strong></td><td>≥ $2,900</td><td>Green</td></tr>
+          <tr><td><strong style="color:var(--strong)">Strong</strong></td><td>$2,600 – $2,899</td><td>Yellow-green</td></tr>
+          <tr><td><strong style="color:var(--average)">Average</strong></td><td>$2,200 – $2,599</td><td>Grey</td></tr>
+          <tr><td><strong style="color:var(--below)">Below Average</strong></td><td>$2,000 – $2,199</td><td>Orange</td></tr>
+          <tr><td><strong style="color:var(--slow)">Slow</strong></td><td>&lt; $2,000</td><td>Red</td></tr>
+        </tbody>
+      </table>
+      <div style="font-size:12px;color:var(--text-muted);margin-top:8px">Thresholds can be adjusted under Settings.</div>
+    </div>
+
+    <div class="db-section">
+      <div class="db-section-title">Sales Prediction Engine</div>
+      <p style="font-size:13px;color:var(--text-muted);margin:0 0 12px">Once enough Square data is loaded, the engine switches to a data-calibrated model. All factors below are derived from your actual sales history.</p>
+      <table class="db-table">
+        <thead><tr><th>Factor</th><th>How it works</th></tr></thead>
+        <tbody>
+          <tr><td><strong>Base</strong></td><td>Your overall average daily net sales across all historical data.</td></tr>
+          <tr><td><strong>Day of Week</strong></td><td>Each weekday gets a multiplier from its actual average vs the overall base. E.g. if Saturdays average 20% above base, Saturday predictions are scaled up 20%.</td></tr>
+          <tr><td><strong>Seasonality</strong></td><td>Each calendar month gets a multiplier from its actual monthly average. Shown only when the month impact is &gt; $30 above/below base.</td></tr>
+          <tr><td><strong>Temperature</strong></td><td>Bins: &lt;−10°C, −10–0°C, 0–5°C, 5–12°C, 12–18°C, 18–26°C, &gt;26°C. Multiplier for each bin is calibrated from days in that temperature range vs the base.</td></tr>
+          <tr><td><strong>Weather Condition</strong></td><td>WMO code bins: Clear / Partly Cloudy / Overcast / Drizzle / Rain / Snow. Each bin has a data-derived multiplier. Temperature and condition are averaged together.</td></tr>
+          <tr><td><strong>Home Games</strong></td><td>Raptors, Maple Leafs, and Blue Jays home games. Lift % is calibrated from your actual sales on game days vs comparable non-game days.</td></tr>
+          <tr><td><strong>Other Events</strong></td><td>Manually added events (concerts, festivals, etc.) contribute a flat ~$80 lift per event unless tagged as a closure.</td></tr>
+          <tr><td><strong>Closure</strong></td><td>Events tagged as closures set predicted sales to ~10% of base.</td></tr>
+          <tr><td><strong>Confidence Range</strong></td><td>Low = −10% of prediction · High = +12% of prediction.</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="db-section">
+      <div class="db-section-title">Payroll &amp; Labour Cost</div>
+      <p style="font-size:13px;color:var(--text-muted);margin:0 0 12px">Labour cost is estimated from the Connecteam schedule. Shift hours × individual hourly rate = estimated cost per shift.</p>
+      <table class="db-table">
+        <thead><tr><th>Staff Member</th><th>Hourly Rate</th></tr></thead>
+        <tbody>
+          <tr><td>Janey Lee</td><td>$20.25/hr</td></tr>
+          <tr><td>Sun Kim</td><td>$22.00/hr</td></tr>
+          <tr><td>Ear</td><td>$19.00/hr</td></tr>
+          <tr><td>Thuy</td><td>$18.50/hr</td></tr>
+          <tr><td>Jojo</td><td>$18.00/hr</td></tr>
+          <tr><td>Rachel</td><td>$18.00/hr</td></tr>
+          <tr><td>Marvin</td><td>$15.00/hr</td></tr>
+          <tr><td>All others</td><td>$17.60/hr (default)</td></tr>
+          <tr><td>Management</td><td>Excluded from labour cost</td></tr>
+        </tbody>
+      </table>
+      <div style="font-size:12px;color:var(--text-muted);margin-top:8px">Labour % of Net Sales = Est. Labour Cost ÷ Net Sales × 100. Green &lt;30%, Yellow 30–40%, Red &gt;40%.</div>
+    </div>
+
+    <div class="db-section">
+      <div class="db-section-title">Scheduling — FOH / Kitchen Classification</div>
+      <p style="font-size:13px;color:var(--text-muted);margin:0 0 12px">Shifts are classified in this order of priority:</p>
+      <table class="db-table">
+        <thead><tr><th>Category</th><th>Matched by shift title or job title / department</th></tr></thead>
+        <tbody>
+          <tr><td><strong>FOH (Front of House)</strong></td><td>Server · Assistant General Manager · FOH · Front of House · Front</td></tr>
+          <tr><td><strong>Kitchen (BOH)</strong></td><td>Head Cook · Shift Supervisor · Kitchen Staff · Kitchen · Cook · BOH</td></tr>
+          <tr><td><strong>Other</strong></td><td>Anything that doesn't match FOH or Kitchen keywords</td></tr>
+        </tbody>
+      </table>
+      <div style="font-size:12px;color:var(--text-muted);margin-top:8px">Classification checks: (1) shift title → (2) user job title → (3) user department.</div>
+    </div>
+
+    <div class="db-section">
+      <div class="db-section-title">Data Sources &amp; Sync Schedule</div>
+      <table class="db-table">
+        <thead><tr><th>Source</th><th>Data</th><th>Sync time</th></tr></thead>
+        <tbody>
+          <tr><td><strong>Square</strong></td><td>Orders, gross/net sales, tips, tax, refunds, transaction count</td><td>Daily at 6:00 AM Toronto time</td></tr>
+          <tr><td><strong>Connecteam</strong></td><td>Shifts, headcount, FOH/Kitchen split, hours, labour cost</td><td>Daily at 6:30 AM Toronto time</td></tr>
+          <tr><td><strong>Open-Meteo</strong></td><td>7-day weather forecast (temperature + WMO condition code)</td><td>Every 6 hours (cached)</td></tr>
+          <tr><td><strong>Historical weather</strong></td><td>Past temperatures and conditions for prediction calibration</td><td>Cached for 7 days</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+  </div>
+</div>
+
 <!-- HEADER -->
 <header>
   <div class="header-left">
@@ -527,6 +622,7 @@
   <div class="header-right">
     <div class="weather-status" id="weatherStatus"><div class="spin"></div><span>Loading weather...</span></div>
     <button class="btn" onclick="openDashboard()">📊 Owner Dashboard</button>
+    <button class="btn" onclick="openLegend()">? Legend</button>
     <button class="btn btn-accent" onclick="openModal('addEventModal')">+ Add Event</button>
     <button class="btn" onclick="openSettingsModal()">Settings</button>
   </div>
@@ -1898,6 +1994,12 @@ function openDashboard() {
 }
 function closeDashboard() {
   document.getElementById('dashboardOverlay').classList.remove('open');
+}
+function openLegend() {
+  document.getElementById('legendOverlay').classList.add('open');
+}
+function closeLegend() {
+  document.getElementById('legendOverlay').classList.remove('open');
 }
 
 function renderDashboard() {
