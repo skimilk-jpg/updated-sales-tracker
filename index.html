@@ -321,6 +321,116 @@
     @media (max-width: 1100px) { .app-container { grid-template-columns: 220px 1fr; } .right-panel { display: none; } }
     @media (max-width: 750px) { .app-container { grid-template-columns: 1fr; } .left-panel { display: none; } }
 
+    /* ── MOBILE OPTIMIZATIONS ───────────────────────── */
+
+    /* Account for bottom drawer bar on all sizes */
+    body { padding-bottom: 42px; }
+    .app-container { height: calc(100vh - 57px - 42px); }
+
+    /* Right panel: slide-in overlay on mobile */
+    @media (max-width: 750px) {
+      .right-panel {
+        display: flex !important;
+        position: fixed;
+        top: 57px; right: 0; bottom: 42px; left: 0;
+        z-index: 150;
+        transform: translateX(100%);
+        transition: transform 0.25s ease;
+        box-shadow: -4px 0 24px rgba(0,0,0,0.18);
+        width: 100%;
+      }
+      .right-panel.mobile-open { transform: translateX(0); }
+      .mobile-rp-back { display: flex !important; }
+    }
+
+    /* Mobile back button in right panel header (hidden on desktop) */
+    .mobile-rp-back {
+      display: none;
+      align-items: center; gap: 6px;
+      background: none; border: none; color: var(--accent);
+      font-size: 13px; font-weight: 700; cursor: pointer; padding: 0;
+      margin-bottom: 6px;
+    }
+
+    /* Header: compress on small screens */
+    @media (max-width: 650px) {
+      header { padding: 8px 12px; gap: 8px; }
+      .header-right .btn-hide-mobile { display: none; }
+      .weather-status { padding: 5px 8px; font-size: 11px; }
+      .logo { font-size: 18px; }
+    }
+
+    /* Calendar cells: tighter on mobile */
+    @media (max-width: 600px) {
+      .cal-cell { min-height: 64px; padding: 4px; border-radius: 6px; }
+      .cell-date-num { font-size: 11px; width: 18px; height: 18px; }
+      .cell-sales-amt { font-size: 10px; }
+      .cell-weather-row, .cell-events { display: none; }
+      .cell-tier-badge { display: none; }
+      .dow-header { font-size: 9px; }
+    }
+
+    /* Week view: reduce time label column on mobile */
+    @media (max-width: 600px) {
+      .week-grid-header { grid-template-columns: 36px repeat(7, 1fr); }
+      .week-data-row { grid-template-columns: 36px repeat(7, 1fr); }
+      .week-row-label { font-size: 8px; padding: 4px; }
+      .week-day-name { font-size: 9px; }
+      .week-day-num { font-size: 14px; }
+      .week-sales-amt { font-size: 10px; }
+      .week-sales-cat { display: none; }
+    }
+
+    /* Bottom drawer: full-height on mobile, stack columns */
+    @media (max-width: 750px) {
+      .bottom-drawer.open { height: 80vh; }
+      .drawer-body { grid-template-columns: 1fr; gap: 16px; }
+      .drawer-toggle-summary { display: none; }
+    }
+
+    /* Touch-friendly buttons */
+    @media (max-width: 750px) {
+      .btn { min-height: 40px; padding: 8px 14px; }
+      .btn-sm { min-height: 34px; }
+      .cal-nav-btn { min-height: 40px; padding: 8px 14px; }
+      .mini-cell { min-height: 32px; }
+    }
+
+    /* BOTTOM DRAWER */
+    .bottom-drawer {
+      position: fixed; bottom: 0; left: 0; right: 0;
+      background: var(--surface); border-top: 2px solid var(--border);
+      box-shadow: 0 -4px 20px rgba(0,0,0,0.08);
+      z-index: 200; transition: height 0.25s ease; height: 42px; overflow: hidden;
+    }
+    .bottom-drawer.open { height: 400px; }
+    .drawer-toggle {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 0 20px; height: 42px; cursor: pointer; user-select: none;
+      border-bottom: 1px solid var(--border);
+    }
+    .drawer-toggle:hover { background: var(--surface2); }
+    .drawer-toggle-left { display: flex; align-items: center; gap: 10px; }
+    .drawer-toggle-label { font-size: 13px; font-weight: 700; color: var(--text); }
+    .drawer-toggle-summary { font-size: 12px; color: var(--text-muted); }
+    .drawer-toggle-arrow { font-size: 12px; color: var(--text-muted); transition: transform 0.25s; }
+    .bottom-drawer.open .drawer-toggle-arrow { transform: rotate(180deg); }
+    .drawer-body {
+      padding: 16px 24px; overflow-y: auto; height: calc(100% - 42px);
+      display: grid; grid-template-columns: 300px 1fr; gap: 24px;
+    }
+    .drawer-summary-col { display: flex; flex-direction: column; gap: 8px; }
+    .drawer-daily-col { overflow-y: auto; }
+    .drawer-daily-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    .drawer-daily-table th {
+      text-align: left; font-size: 10px; font-weight: 700; text-transform: uppercase;
+      letter-spacing: 0.06em; color: var(--text-muted); padding: 0 8px 6px; border-bottom: 1px solid var(--border);
+    }
+    .drawer-daily-table th:not(:first-child) { text-align: right; }
+    .drawer-daily-table td { padding: 6px 8px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+    .drawer-daily-table td:not(:first-child) { text-align: right; }
+    .drawer-daily-table tr:last-child td { border-bottom: none; }
+
     /* OWNER DASHBOARD */
     .db-overlay { position:fixed;inset:0;background:var(--bg);z-index:2000;overflow-y:auto;display:none; }
     .db-overlay.open { display:block; }
@@ -624,10 +734,10 @@
   </div>
   <div class="header-right">
     <div class="weather-status" id="weatherStatus"><div class="spin"></div><span>Loading weather...</span></div>
-    <button class="btn" onclick="openDashboard()">📊 Owner Dashboard</button>
-    <button class="btn" onclick="openLegend()">? Legend</button>
+    <button class="btn btn-hide-mobile" onclick="openDashboard()">📊 Owner Dashboard</button>
+    <button class="btn btn-hide-mobile" onclick="openLegend()">? Legend</button>
     <button class="btn btn-accent" onclick="openModal('addEventModal')">+ Add Event</button>
-    <button class="btn" onclick="openSettingsModal()">Settings</button>
+    <button class="btn" onclick="openSettingsModal()">⚙︎</button>
   </div>
 </header>
 
@@ -710,14 +820,9 @@
   <!-- RIGHT PANEL -->
   <div class="right-panel">
     <div class="rp-header">
+      <button class="mobile-rp-back" onclick="closeMobileRightPanel()">← Back to Calendar</button>
       <h3 id="rpTitle">Select a date</h3>
       <div class="rp-sub" id="rpSub">Doraji · The Well, Toronto</div>
-    </div>
-
-    <!-- MTD Forecast Accuracy -->
-    <div class="rp-section">
-      <div class="rp-title">MTD Forecast Accuracy</div>
-      <div id="mtdAccuracyContent"><div style="font-size:12px;color:var(--text-muted);text-align:center;padding:8px 0">No sales data loaded yet</div></div>
     </div>
 
     <!-- Sales Forecast -->
@@ -769,6 +874,25 @@
     </div>
   </div>
 
+</div>
+
+<!-- BOTTOM DRAWER — Forecast vs Actual -->
+<div class="bottom-drawer" id="bottomDrawer">
+  <div class="drawer-toggle" onclick="toggleDrawer()">
+    <div class="drawer-toggle-left">
+      <span class="drawer-toggle-label">📊 Forecast vs Actual</span>
+      <span class="drawer-toggle-summary" id="drawerSummaryChip"></span>
+    </div>
+    <span class="drawer-toggle-arrow">▲</span>
+  </div>
+  <div class="drawer-body">
+    <div class="drawer-summary-col" id="mtdSummaryCol">
+      <div style="font-size:12px;color:var(--text-muted)">No sales data loaded yet</div>
+    </div>
+    <div class="drawer-daily-col" id="mtdDailyCol">
+      <div style="font-size:12px;color:var(--text-muted)">No daily data available</div>
+    </div>
+  </div>
 </div>
 
 <script>
@@ -1606,9 +1730,16 @@ function updateTodayStats() {
 }
 
 // ─── MTD ACCURACY SUMMARY ─────────────────────────────────────────
+function toggleDrawer() {
+  document.getElementById('bottomDrawer').classList.toggle('open');
+}
+
 function updateAccuracySummary() {
-  const el = document.getElementById('mtdAccuracyContent');
-  if (!el) return;
+  const summaryCol = document.getElementById('mtdSummaryCol');
+  const dailyCol   = document.getElementById('mtdDailyCol');
+  const chip       = document.getElementById('drawerSummaryChip');
+  if (!summaryCol || !dailyCol) return;
+
   const monthNames = ['January','February','March','April','May','June','July','August','September','October','November','December'];
   const dowNames   = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
   const year  = TODAY.getFullYear();
@@ -1627,18 +1758,19 @@ function updateAccuracySummary() {
     const predicted = predictDayForecast(d).sales;
     const diff = actual - predicted;
     const pct  = actual / predicted * 100 - 100;
-    const absPct = Math.abs(pct);
     totalActual    += actual;
     totalPredicted += predicted;
     dayCount++;
-    if (absPct <= 10) daysOnTarget++;
+    if (Math.abs(pct) <= 10) daysOnTarget++;
     else if (diff > 0) daysAbove++;
     else daysBelow++;
     rows.push({ day, dow: d.getDay(), actual, predicted, diff, pct });
   }
 
   if (dayCount === 0) {
-    el.innerHTML = `<div style="font-size:12px;color:var(--text-muted);text-align:center;padding:8px 0">No data yet for ${monthNames[month]}</div>`;
+    summaryCol.innerHTML = `<div style="font-size:12px;color:var(--text-muted)">No data yet for ${monthNames[month]}</div>`;
+    dailyCol.innerHTML   = '';
+    if (chip) chip.textContent = '';
     return;
   }
 
@@ -1649,42 +1781,46 @@ function updateAccuracySummary() {
   const varColor = Math.abs(variancePct) <= 10 ? 'var(--exceptional)' : Math.abs(variancePct) <= 20 ? '#f59e0b' : 'var(--slow)';
   const onTargetPct = Math.round(daysOnTarget / dayCount * 100);
 
-  const dailyRows = rows.map(r => {
-    const rowColor = Math.abs(r.pct) <= 10 ? 'var(--exceptional)' : Math.abs(r.pct) <= 20 ? '#f59e0b' : 'var(--slow)';
-    const sign = r.diff >= 0 ? '+' : '−';
-    const pctFmt = sign + Math.abs(r.pct).toFixed(1) + '%';
-    return `<div style="display:grid;grid-template-columns:52px 1fr 1fr 52px;align-items:center;gap:4px;padding:5px 0;border-bottom:1px solid var(--border)">
-      <span style="font-size:10px;color:var(--text-muted);font-weight:600">${monthNames[month].slice(0,3)} ${r.day}<br><span style="font-weight:400">${dowNames[r.dow]}</span></span>
-      <span style="font-size:11px;font-weight:700;color:var(--text)">${fmtMoney(r.actual)}</span>
-      <span style="font-size:11px;color:var(--text-muted)">${fmtMoney(Math.round(r.predicted))}</span>
-      <span style="font-size:11px;font-weight:700;color:${rowColor};text-align:right">${pctFmt}</span>
-    </div>`;
-  }).reverse().join('');
+  // Update collapsed bar chip
+  if (chip) chip.textContent = `${monthNames[month]} · Actual ${fmtMoney(totalActual)} vs Est. ${fmtMoney(Math.round(totalPredicted))} · ${diffStr} (${pctStr})`;
 
-  el.innerHTML = `
-    <div style="font-size:11px;color:var(--text-muted);margin-bottom:10px">${monthNames[month]} ${year} · ${dayCount} day${dayCount !== 1 ? 's' : ''} with data</div>
+  // Left column — MTD summary
+  summaryCol.innerHTML = `
+    <div style="font-size:11px;color:var(--text-muted);margin-bottom:12px;font-weight:600;text-transform:uppercase;letter-spacing:0.06em">${monthNames[month]} ${year} · ${dayCount} day${dayCount !== 1 ? 's' : ''} with data</div>
     <div class="factor-row"><span class="factor-label">Actual Net Sales</span><span class="factor-val" style="color:var(--text)">${fmtMoney(totalActual)}</span></div>
     <div class="factor-row"><span class="factor-label">Model Predicted</span><span class="factor-val" style="color:var(--text-muted)">${fmtMoney(Math.round(totalPredicted))}</span></div>
     <div class="factor-row"><span class="factor-label">Variance</span><span class="factor-val" style="color:${varColor}">${diffStr} (${pctStr})</span></div>
-    <div style="margin-top:10px">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
-        <span style="font-size:10px;color:var(--text-muted)">Days within 10% of estimate</span>
-        <span style="font-size:11px;font-weight:700;color:${varColor}">${daysOnTarget}/${dayCount}</span>
-      </div>
-      <div style="height:6px;background:var(--surface2);border-radius:3px;overflow:hidden">
-        <div style="height:100%;width:${onTargetPct}%;background:${varColor};border-radius:3px;transition:width 0.3s"></div>
-      </div>
-      <div style="font-size:10px;color:var(--text-muted);margin-top:5px">${daysAbove} day${daysAbove!==1?'s':''} above · ${daysBelow} day${daysBelow!==1?'s':''} below estimate</div>
-    </div>
     <div style="margin-top:14px">
-      <div style="display:grid;grid-template-columns:52px 1fr 1fr 52px;gap:4px;padding-bottom:4px;border-bottom:1px solid var(--border)">
-        <span style="font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase">Date</span>
-        <span style="font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase">Actual</span>
-        <span style="font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase">Est.</span>
-        <span style="font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase;text-align:right">Diff</span>
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+        <span style="font-size:10px;color:var(--text-muted)">Days within 10% of estimate</span>
+        <span style="font-size:12px;font-weight:700;color:${varColor}">${daysOnTarget}/${dayCount}</span>
       </div>
-      ${dailyRows}
+      <div style="height:8px;background:var(--surface2);border-radius:4px;overflow:hidden">
+        <div style="height:100%;width:${onTargetPct}%;background:${varColor};border-radius:4px;transition:width 0.3s"></div>
+      </div>
+      <div style="font-size:10px;color:var(--text-muted);margin-top:6px">${daysAbove} day${daysAbove!==1?'s':''} above · ${daysBelow} day${daysBelow!==1?'s':''} below estimate</div>
     </div>`;
+
+  // Right column — daily table (most recent first)
+  const tableRows = rows.slice().reverse().map(r => {
+    const rowColor = Math.abs(r.pct) <= 10 ? 'var(--exceptional)' : Math.abs(r.pct) <= 20 ? '#f59e0b' : 'var(--slow)';
+    const sign = r.diff >= 0 ? '+' : '−';
+    return `<tr>
+      <td style="color:var(--text-muted);white-space:nowrap">${monthNames[month].slice(0,3)} ${r.day} <span style="opacity:0.6">${dowNames[r.dow]}</span></td>
+      <td style="font-weight:700;color:var(--text)">${fmtMoney(r.actual)}</td>
+      <td style="color:var(--text-muted)">${fmtMoney(Math.round(r.predicted))}</td>
+      <td style="font-weight:700;color:${rowColor}">${sign}${fmtMoney(Math.abs(Math.round(r.diff)))}</td>
+      <td style="font-weight:700;color:${rowColor}">${sign}${Math.abs(r.pct).toFixed(1)}%</td>
+    </tr>`;
+  }).join('');
+
+  dailyCol.innerHTML = `
+    <table class="drawer-daily-table">
+      <thead><tr>
+        <th>Date</th><th>Actual</th><th>Estimated</th><th>$ Diff</th><th>% Diff</th>
+      </tr></thead>
+      <tbody>${tableRows}</tbody>
+    </table>`;
 }
 
 // ─── NAVIGATION ───────────────────────────────────────────────────
@@ -1714,6 +1850,12 @@ function selectDate(k) {
   calViewDate = new Date(selectedDate.getFullYear(), selectedDate.getMonth(), 1);
   weekStart = getWeekStart(selectedDate);
   renderCalendar(); renderWeatherStrip(); updateRightPanel();
+  if (window.innerWidth <= 750) {
+    document.querySelector('.right-panel').classList.add('mobile-open');
+  }
+}
+function closeMobileRightPanel() {
+  document.querySelector('.right-panel').classList.remove('mobile-open');
 }
 
 // ─── CUSTOM EVENTS ────────────────────────────────────────────────
