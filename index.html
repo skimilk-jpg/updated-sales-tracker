@@ -1610,10 +1610,12 @@ function updateAccuracySummary() {
   const el = document.getElementById('mtdAccuracyContent');
   if (!el) return;
   const monthNames = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+  const dowNames   = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
   const year  = TODAY.getFullYear();
   const month = TODAY.getMonth();
   let totalActual = 0, totalPredicted = 0, dayCount = 0;
   let daysOnTarget = 0, daysAbove = 0, daysBelow = 0;
+  const rows = [];
 
   for (let day = 1; day < TODAY.getDate(); day++) {
     const d     = new Date(year, month, day);
@@ -1624,13 +1626,15 @@ function updateAccuracySummary() {
     if (!actual || actual < 200) continue;
     const predicted = predictDayForecast(d).sales;
     const diff = actual - predicted;
-    const pct  = Math.abs(diff / predicted * 100);
+    const pct  = actual / predicted * 100 - 100;
+    const absPct = Math.abs(pct);
     totalActual    += actual;
     totalPredicted += predicted;
     dayCount++;
-    if (pct <= 10) daysOnTarget++;
+    if (absPct <= 10) daysOnTarget++;
     else if (diff > 0) daysAbove++;
     else daysBelow++;
+    rows.push({ day, dow: d.getDay(), actual, predicted, diff, pct });
   }
 
   if (dayCount === 0) {
@@ -1644,6 +1648,18 @@ function updateAccuracySummary() {
   const diffStr  = (variance >= 0 ? '+' : '−') + fmtMoney(Math.abs(Math.round(variance)));
   const varColor = Math.abs(variancePct) <= 10 ? 'var(--exceptional)' : Math.abs(variancePct) <= 20 ? '#f59e0b' : 'var(--slow)';
   const onTargetPct = Math.round(daysOnTarget / dayCount * 100);
+
+  const dailyRows = rows.map(r => {
+    const rowColor = Math.abs(r.pct) <= 10 ? 'var(--exceptional)' : Math.abs(r.pct) <= 20 ? '#f59e0b' : 'var(--slow)';
+    const sign = r.diff >= 0 ? '+' : '−';
+    const pctFmt = sign + Math.abs(r.pct).toFixed(1) + '%';
+    return `<div style="display:grid;grid-template-columns:52px 1fr 1fr 52px;align-items:center;gap:4px;padding:5px 0;border-bottom:1px solid var(--border)">
+      <span style="font-size:10px;color:var(--text-muted);font-weight:600">${monthNames[month].slice(0,3)} ${r.day}<br><span style="font-weight:400">${dowNames[r.dow]}</span></span>
+      <span style="font-size:11px;font-weight:700;color:var(--text)">${fmtMoney(r.actual)}</span>
+      <span style="font-size:11px;color:var(--text-muted)">${fmtMoney(Math.round(r.predicted))}</span>
+      <span style="font-size:11px;font-weight:700;color:${rowColor};text-align:right">${pctFmt}</span>
+    </div>`;
+  }).reverse().join('');
 
   el.innerHTML = `
     <div style="font-size:11px;color:var(--text-muted);margin-bottom:10px">${monthNames[month]} ${year} · ${dayCount} day${dayCount !== 1 ? 's' : ''} with data</div>
@@ -1659,6 +1675,15 @@ function updateAccuracySummary() {
         <div style="height:100%;width:${onTargetPct}%;background:${varColor};border-radius:3px;transition:width 0.3s"></div>
       </div>
       <div style="font-size:10px;color:var(--text-muted);margin-top:5px">${daysAbove} day${daysAbove!==1?'s':''} above · ${daysBelow} day${daysBelow!==1?'s':''} below estimate</div>
+    </div>
+    <div style="margin-top:14px">
+      <div style="display:grid;grid-template-columns:52px 1fr 1fr 52px;gap:4px;padding-bottom:4px;border-bottom:1px solid var(--border)">
+        <span style="font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase">Date</span>
+        <span style="font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase">Actual</span>
+        <span style="font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase">Est.</span>
+        <span style="font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase;text-align:right">Diff</span>
+      </div>
+      ${dailyRows}
     </div>`;
 }
 
