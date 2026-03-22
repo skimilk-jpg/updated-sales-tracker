@@ -247,6 +247,9 @@
     .factor-val.pos { color: var(--exceptional); }
     .factor-val.neg { color: var(--slow); }
     .factor-val.neu { color: var(--text-muted); }
+    .forecast-accuracy-block { margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--border); display: flex; flex-direction: column; gap: 4px; }
+    .fca-title { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-muted); margin-bottom: 2px; }
+    .fca-badge { font-size: 11px; font-weight: 600; padding: 3px 0 0 8px; }
 
     /* Weather Detail */
     .weather-main { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; }
@@ -796,8 +799,8 @@ function fmtMoney(n) { return '$'+Math.round(n).toLocaleString(); }
 function fmtMoneyDiff(n) { return (n>=0?'+':'')+fmtMoney(n); }
 
 // ─── WEATHER ─────────────────────────────────────────────────────
-const WEATHER_URL = `https://api.open-meteo.com/v1/forecast?latitude=43.6432&longitude=-79.3960&daily=temperature_2m_max,temperature_2m_min,precipitation_sum,weather_code,windspeed_10m_max,precipitation_probability_max&timezone=America%2FToronto&forecast_days=16`;
-const WEATHER_CACHE_KEY = 'doraji_weather_api_cache';
+const WEATHER_URL = `https://api.open-meteo.com/v1/forecast?latitude=43.6432&longitude=-79.3960&daily=temperature_2m_max,temperature_2m_min,precipitation_sum,weather_code,windspeed_10m_max,precipitation_probability_max&timezone=America%2FToronto&forecast_days=16&past_days=7`;
+const WEATHER_CACHE_KEY = 'doraji_weather_api_cache_v2';
 const WEATHER_CACHE_TTL = 6 * 60 * 60 * 1000; // 6 hours
 
 function onWeatherLoaded(fromCache) {
@@ -1202,6 +1205,67 @@ function predictDay(d) {
   return { score, sales, salesLow: Math.max(800, sales-200), salesHigh: sales+250, factors };
 }
 
+// Same logic as predictDay but always returns a model forecast (never actual data)
+function predictDayForecast(d) {
+  const dowNames   = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+  const monthNames = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  const cal        = settings.calibration;
+
+  if (cal && cal.overall > 0) {
+    const dow   = d.getDay();
+    const month = d.getMonth();
+    const factors = [];
+    let base = cal.overall;
+    const dowMult  = cal.dowAvgs[dow] / cal.overall;
+    const dowDelta = Math.round(cal.dowAvgs[dow] - cal.overall);
+    base *= dowMult;
+    factors.push({ label: `Day: ${dowNames[dow]}`, delta: dowDelta, cls: dowDelta > 50 ? 'pos' : dowDelta < -50 ? 'neg' : 'neu' });
+    const monthMult  = cal.monthAvgs[month] > 0 ? cal.monthAvgs[month] / cal.overall : 1;
+    const monthDelta = Math.round((monthMult - 1) * base);
+    base *= monthMult;
+    const w = getWeather(d);
+    if (w && cal.tempMult && cal.condMult) {
+      const t  = w.maxTemp, c = w.code;
+      const ti = t < -10 ? 0 : t < 0 ? 1 : t < 5 ? 2 : t < 12 ? 3 : t < 18 ? 4 : t < 26 ? 5 : 6;
+      const ci = c <= 2 ? 0 : c <= 3 ? 1 : c <= 55 ? 2 : c <= 67 ? 3 : c <= 77 ? 4 : 5;
+      const wMult  = (cal.tempMult[ti] + cal.condMult[ci]) / 2;
+      base *= wMult;
+    }
+    const events = getEventsForDate(d);
+    const HOME_TEAMS = ['raptors', 'maple leafs', 'blue jays'];
+    const hasHomeGame = events.some(e => e.type === 'sports' && HOME_TEAMS.some(t => e.name.toLowerCase().includes(t)));
+    const hasClosure  = events.some(e => e.type === 'closure');
+    if (hasClosure) { base *= 0.1; }
+    else if (hasHomeGame && cal.eventLift > 1) { base *= cal.eventLift; }
+    else if (events.length > 0) { base += events.length * 80; }
+    const sales = Math.round(Math.max(400, base) / 50) * 50;
+    return { sales };
+  }
+
+  // Fallback score-based
+  let score = 50;
+  const dow = d.getDay();
+  const dowScores = [-20, -20, 0, 2, 3, 5, -2];
+  score += dowScores[dow];
+  score += [-2,-4,0,1,3,5,6,6,4,2,0,-1][d.getMonth()];
+  const w = getWeather(d);
+  if (w) {
+    const t = w.maxTemp, c = w.code;
+    let wScore = 0;
+    if (t>=18&&t<=26) wScore+=4; else if (t>26) wScore+=2; else if (t>=12&&t<18) wScore+=2;
+    else if (t>=5&&t<12) wScore-=2; else if (t>=0&&t<5) wScore-=5; else if (t>=-10&&t<0) wScore-=9; else if (t<-10) wScore-=14;
+    if (c===0) wScore+=3; else if (c<=2) wScore+=2; else if (c<=49) wScore-=2; else if (c<=55) wScore-=4;
+    else if (c<=67) wScore-=7; else if (c<=77) wScore-=10; else if (c<=86) wScore-=8; else wScore-=12;
+    score += wScore;
+  }
+  const events = getEventsForDate(d);
+  let evScore = 0;
+  for (const ev of events) { if (ev.type==='closure') { evScore-=30; continue; } evScore += ev.impact==='high'?4:ev.impact==='medium'?5:ev.impact==='low'?2:-20; }
+  if (events.length > 0) score += evScore;
+  score = Math.max(2, Math.min(100, Math.round(score)));
+  return { sales: scoreToDailySales(score) };
+}
+
 function salesColor(sales) {
   if (sales >= SALES_EXCEPTIONAL) return 'var(--exceptional)';
   if (sales >= SALES_STRONG)      return 'var(--strong)';
@@ -1298,8 +1362,7 @@ function renderMonth() {
       const sqDay = d < TODAY ? squareSales[k] : null;
       const hasAct = sqDay && typeof sqDay === 'object';
       html+=`<div class="cell-sales-bar" style="background:${color};width:${score}%"></div>`;
-      html+=`<div class="cell-sales-amt" style="color:${color}">${fmtMoney(sales)}${hasAct?'<span style="font-size:8px;opacity:0.6;margin-left:3px">GRS</span>':''}</div>`;
-      if (hasAct && sqDay.net != null) html+=`<div style="font-size:9px;color:var(--text-muted);margin-bottom:2px">Net ${fmtMoney(sqDay.net)}</div>`;
+      html+=`<div class="cell-sales-amt" style="color:${color}">${fmtMoney(sales)}</div>`;
       if(w) html+=`<div class="cell-weather-row"><span class="cell-weather-icon">${wmoIcon(w.code)}</span><span class="cell-temp">${w.maxTemp}°/${w.minTemp}°</span></div>`;
       html+=`<div class="cell-events">${chips}${more>0?`<div style="font-size:9px;color:var(--text-muted)">+${more} more</div>`:''}</div>`;
       html+=`<div class="cell-tier-badge" style="background:${color}22;color:${color}">${shortLbl}</div>`;
@@ -1421,7 +1484,7 @@ function updateRightPanel() {
     const refunds  = sqDay.refunds || 0;
     const txCount  = sqDay.txCount || 0;
     const avgTx    = txCount > 0 ? sqDay.gross / txCount : 0;
-    document.getElementById('rpSalesRange').textContent = `Net sales: ${fmtMoney(net)}`;
+    document.getElementById('rpSalesRange').textContent = `Gross: ${fmtMoney(sqDay.gross)}`;
     document.getElementById('rpSalesCat').textContent   = 'Actual · Square POS';
     document.getElementById('rpSalesCat').style.color   = color;
     document.getElementById('rpSalesDesc').textContent  = '';
@@ -1437,6 +1500,24 @@ function updateRightPanel() {
       ${tips > 0 ? `<div class="factor-row"><span class="factor-label">Tips</span><span class="factor-val" style="color:var(--text)">${fmtMoney(tips)}</span></div>` : ''}
       <div class="factor-row"><span class="factor-label">Transactions</span><span class="factor-val" style="color:var(--text)">${txCount}</span></div>
       ${txCount > 0 ? `<div class="factor-row"><span class="factor-label">Avg Transaction</span><span class="factor-val" style="color:var(--text)">${fmtMoney(avgTx)}</span></div>` : ''}`;
+
+    // Forecast accuracy block
+    const fForecast  = predictDayForecast(d);
+    const fPredicted = fForecast.sales;
+    const fActual    = sqDay.net ?? sqDay.gross;
+    const fDiff      = fActual - fPredicted;
+    const fAbsPct    = Math.abs(fDiff / fPredicted * 100);
+    const fPctStr    = (fDiff >= 0 ? '+' : '\u2212') + fAbsPct.toFixed(1) + '%';
+    const fDiffStr   = (fDiff >= 0 ? '+' : '\u2212') + fmtMoney(Math.abs(Math.round(fDiff)));
+    const fAccColor  = fAbsPct <= 10 ? 'var(--exceptional)' : fAbsPct <= 20 ? '#f59e0b' : 'var(--slow)';
+    const fLabel     = fAbsPct <= 5 ? '\u2713 On target' : fDiff > 0 ? '\u25b2 Above estimate' : '\u25bc Below estimate';
+    document.getElementById('rpFactors').innerHTML += `
+      <div class="forecast-accuracy-block">
+        <div class="fca-title">Forecast vs Actual</div>
+        <div class="factor-row"><span class="factor-label">Model estimate</span><span class="factor-val" style="color:var(--text-muted)">${fmtMoney(fPredicted)}</span></div>
+        <div class="factor-row"><span class="factor-label">Variance</span><span class="factor-val" style="color:${fAccColor}">${fDiffStr} (${fPctStr})</span></div>
+        <div class="fca-badge" style="color:${fAccColor}">${fLabel}</div>
+      </div>`;
   } else {
     document.getElementById('rpSalesRange').textContent = salesLow && salesHigh ? `Likely range: ${fmtMoney(salesLow)} – ${fmtMoney(salesHigh)}` : 'Estimated range';
     document.getElementById('rpSalesCat').textContent   = salesLabel(sales);
@@ -1892,7 +1973,7 @@ function isSquareCacheValid() {
 function getActualSales(d) {
   const s = squareSales[dateKey(d)];
   if (s == null) return null;
-  return typeof s === 'number' ? s : (s.gross ?? null); // handle legacy and new format
+  return typeof s === 'number' ? s : (s.net ?? s.gross ?? null); // prefer net; fall back to gross for legacy
 }
 
 async function fetchSquareSales(forceRefresh = false) {
@@ -1902,13 +1983,30 @@ async function fetchSquareSales(forceRefresh = false) {
     const res = await fetch('sales-data.json?t=' + Date.now());
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
-    if (!data.days || Object.keys(data.days).length === 0) {
+    let days = data.days && Object.keys(data.days).length > 0 ? data.days : null;
+    let updatedAt = data.updatedAt;
+
+    // Fall back to sales-archive.json if sales-data.json is empty
+    if (!days) {
+      try {
+        const archiveRes = await fetch('sales-archive.json?t=' + Date.now());
+        if (archiveRes.ok) {
+          const archiveData = await archiveRes.json();
+          if (archiveData.days && Object.keys(archiveData.days).length > 0) {
+            days = archiveData.days;
+            updatedAt = archiveData.updatedAt;
+          }
+        }
+      } catch(e) { console.warn('Archive fallback failed:', e.message); }
+    }
+
+    if (!days) {
       updateSquareStatus('empty');
       return;
     }
-    squareSales = data.days;
+    squareSales = days;
     localStorage.setItem(SQUARE_DAILY_KEY, JSON.stringify(squareSales));
-    localStorage.setItem(SQUARE_SYNC_KEY, JSON.stringify({ ts: Date.now(), count: Object.keys(squareSales).length, updatedAt: data.updatedAt }));
+    localStorage.setItem(SQUARE_SYNC_KEY, JSON.stringify({ ts: Date.now(), count: Object.keys(squareSales).length, updatedAt }));
     calibrateFromSquare();
     renderCalendar(); updateRightPanel(); updateTodayStats(); renderHomeGames();
     updateSquareStatus('ok');
@@ -1921,11 +2019,11 @@ async function fetchSquareSales(forceRefresh = false) {
 }
 
 function calibrateFromSquare() {
-  const getGross = k => { const s = squareSales[k]; return typeof s === 'number' ? s : (s?.gross ?? 0); };
-  const validDates = Object.keys(squareSales).filter(k => getGross(k) > 200);
+  const getNet = k => { const s = squareSales[k]; return typeof s === 'number' ? s : (s?.net ?? s?.gross ?? 0); };
+  const validDates = Object.keys(squareSales).filter(k => getNet(k) > 200);
   if (validDates.length < 14) return;
 
-  const allVals = validDates.map(k => getGross(k)).sort((a, b) => a - b);
+  const allVals = validDates.map(k => getNet(k)).sort((a, b) => a - b);
   const pct = p => allVals[Math.floor(allVals.length * p)];
 
   // --- Sales tier thresholds from real percentiles ---
@@ -1938,12 +2036,12 @@ function calibrateFromSquare() {
 
   // --- Day-of-week averages ---
   const dowBuckets = Array.from({length: 7}, () => []);
-  for (const k of validDates) dowBuckets[parseKey(k).getDay()].push(getGross(k));
+  for (const k of validDates) dowBuckets[parseKey(k).getDay()].push(getNet(k));
   const dowAvgs = dowBuckets.map(b => b.length > 2 ? b.reduce((a, c) => a + c, 0) / b.length : overall);
 
   // --- Monthly averages ---
   const monthBuckets = Array.from({length: 12}, () => []);
-  for (const k of validDates) monthBuckets[parseKey(k).getMonth()].push(getGross(k));
+  for (const k of validDates) monthBuckets[parseKey(k).getMonth()].push(getNet(k));
   const monthAvgs = monthBuckets.map(b => b.length > 2 ? b.reduce((a, c) => a + c, 0) / b.length : overall);
 
   // --- Weather correlation (DOW-normalized to remove confounding) ---
@@ -1955,7 +2053,7 @@ function calibrateFromSquare() {
   for (const k of validDates) {
     const w = historicalWeather[k];
     if (!w) continue;
-    const norm = getGross(k) / dowAvgs[parseKey(k).getDay()]; // remove DOW effect
+    const norm = getNet(k) / dowAvgs[parseKey(k).getDay()]; // remove DOW effect
     const t = w.maxTemp;
     tempBuckets[t < -10 ? 0 : t < 0 ? 1 : t < 5 ? 2 : t < 12 ? 3 : t < 18 ? 4 : t < 26 ? 5 : 6].push(norm);
     const c = w.code;
@@ -1972,9 +2070,9 @@ function calibrateFromSquare() {
     .filter(e => e.type === 'sports' && HOME_TEAMS.some(t => e.name.toLowerCase().includes(t)))
     .map(e => e.date));
   const gameVals   = validDates.filter(k => gameDates.has(k))
-    .map(k => getGross(k) / dowAvgs[parseKey(k).getDay()]);
+    .map(k => getNet(k) / dowAvgs[parseKey(k).getDay()]);
   const noGameVals = validDates.filter(k => !gameDates.has(k))
-    .map(k => getGross(k) / dowAvgs[parseKey(k).getDay()]);
+    .map(k => getNet(k) / dowAvgs[parseKey(k).getDay()]);
   const gameMult   = gameVals.length   >= 3 ? gameVals.reduce((a, c)   => a + c, 0) / gameVals.length   : 1;
   const noGameBase = noGameVals.length >= 3 ? noGameVals.reduce((a, c) => a + c, 0) / noGameVals.length : 1;
   const eventLift  = noGameBase > 0 ? gameMult / noGameBase : 1;
@@ -2025,8 +2123,8 @@ function renderDashboard() {
     // Prediction accuracy for past days
     const d = parseKey(k);
     if (d < TODAY) {
-      const pred = predictDay(d);
-      if (!pred.actual && pred.sales > 0) {
+      const pred = predictDayForecast(d);
+      if (pred.sales > 0) {
         months[mo].predicted.push(pred.sales);
         months[mo].actual.push(gross);
       }
