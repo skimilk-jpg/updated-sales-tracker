@@ -714,6 +714,12 @@
       <div class="rp-sub" id="rpSub">Doraji · The Well, Toronto</div>
     </div>
 
+    <!-- MTD Forecast Accuracy -->
+    <div class="rp-section">
+      <div class="rp-title">MTD Forecast Accuracy</div>
+      <div id="mtdAccuracyContent"><div style="font-size:12px;color:var(--text-muted);text-align:center;padding:8px 0">No sales data loaded yet</div></div>
+    </div>
+
     <!-- Sales Forecast -->
     <div class="rp-section">
       <div class="rp-title">Sales Forecast</div>
@@ -1599,6 +1605,63 @@ function updateTodayStats() {
   el('sTodayHours').textContent = sched ? sched.totalHours + 'h' : '—';
 }
 
+// ─── MTD ACCURACY SUMMARY ─────────────────────────────────────────
+function updateAccuracySummary() {
+  const el = document.getElementById('mtdAccuracyContent');
+  if (!el) return;
+  const monthNames = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+  const year  = TODAY.getFullYear();
+  const month = TODAY.getMonth();
+  let totalActual = 0, totalPredicted = 0, dayCount = 0;
+  let daysOnTarget = 0, daysAbove = 0, daysBelow = 0;
+
+  for (let day = 1; day < TODAY.getDate(); day++) {
+    const d     = new Date(year, month, day);
+    const k     = dateKey(d);
+    const sqDay = squareSales[k];
+    if (!sqDay || typeof sqDay !== 'object') continue;
+    const actual = sqDay.net ?? sqDay.gross;
+    if (!actual || actual < 200) continue;
+    const predicted = predictDayForecast(d).sales;
+    const diff = actual - predicted;
+    const pct  = Math.abs(diff / predicted * 100);
+    totalActual    += actual;
+    totalPredicted += predicted;
+    dayCount++;
+    if (pct <= 10) daysOnTarget++;
+    else if (diff > 0) daysAbove++;
+    else daysBelow++;
+  }
+
+  if (dayCount === 0) {
+    el.innerHTML = `<div style="font-size:12px;color:var(--text-muted);text-align:center;padding:8px 0">No data yet for ${monthNames[month]}</div>`;
+    return;
+  }
+
+  const variance    = totalActual - totalPredicted;
+  const variancePct = totalPredicted > 0 ? (variance / totalPredicted * 100) : 0;
+  const pctStr   = (variance >= 0 ? '+' : '−') + Math.abs(variancePct).toFixed(1) + '%';
+  const diffStr  = (variance >= 0 ? '+' : '−') + fmtMoney(Math.abs(Math.round(variance)));
+  const varColor = Math.abs(variancePct) <= 10 ? 'var(--exceptional)' : Math.abs(variancePct) <= 20 ? '#f59e0b' : 'var(--slow)';
+  const onTargetPct = Math.round(daysOnTarget / dayCount * 100);
+
+  el.innerHTML = `
+    <div style="font-size:11px;color:var(--text-muted);margin-bottom:10px">${monthNames[month]} ${year} · ${dayCount} day${dayCount !== 1 ? 's' : ''} with data</div>
+    <div class="factor-row"><span class="factor-label">Actual Net Sales</span><span class="factor-val" style="color:var(--text)">${fmtMoney(totalActual)}</span></div>
+    <div class="factor-row"><span class="factor-label">Model Predicted</span><span class="factor-val" style="color:var(--text-muted)">${fmtMoney(Math.round(totalPredicted))}</span></div>
+    <div class="factor-row"><span class="factor-label">Variance</span><span class="factor-val" style="color:${varColor}">${diffStr} (${pctStr})</span></div>
+    <div style="margin-top:10px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
+        <span style="font-size:10px;color:var(--text-muted)">Days within 10% of estimate</span>
+        <span style="font-size:11px;font-weight:700;color:${varColor}">${daysOnTarget}/${dayCount}</span>
+      </div>
+      <div style="height:6px;background:var(--surface2);border-radius:3px;overflow:hidden">
+        <div style="height:100%;width:${onTargetPct}%;background:${varColor};border-radius:3px;transition:width 0.3s"></div>
+      </div>
+      <div style="font-size:10px;color:var(--text-muted);margin-top:5px">${daysAbove} day${daysAbove!==1?'s':''} above · ${daysBelow} day${daysBelow!==1?'s':''} below estimate</div>
+    </div>`;
+}
+
 // ─── NAVIGATION ───────────────────────────────────────────────────
 function calNav(dir) {
   if (viewMode==='month') calViewDate = new Date(calViewDate.getFullYear(), calViewDate.getMonth()+dir, 1);
@@ -2008,7 +2071,7 @@ async function fetchSquareSales(forceRefresh = false) {
     localStorage.setItem(SQUARE_DAILY_KEY, JSON.stringify(squareSales));
     localStorage.setItem(SQUARE_SYNC_KEY, JSON.stringify({ ts: Date.now(), count: Object.keys(squareSales).length, updatedAt }));
     calibrateFromSquare();
-    renderCalendar(); updateRightPanel(); updateTodayStats(); renderHomeGames();
+    renderCalendar(); updateRightPanel(); updateTodayStats(); updateAccuracySummary(); renderHomeGames();
     updateSquareStatus('ok');
     showToast(`Loaded ${Object.keys(squareSales).length} days of sales data!`, 'success');
   } catch(err) {
@@ -2386,6 +2449,7 @@ function init() {
   renderCalendar();
   updateRightPanel();
   updateTodayStats();
+  updateAccuracySummary();
   document.getElementById('evtDate').value = dateKey(TODAY);
   fetchWeather();
   fetchHistoricalWeather();   // Open-Meteo archive — last 2 years, 7-day cache
