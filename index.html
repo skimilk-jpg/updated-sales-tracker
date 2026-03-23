@@ -386,9 +386,22 @@
 
     /* Bottom drawer: full-height on mobile, stack columns */
     @media (max-width: 750px) {
-      .bottom-drawer.open { height: 80vh; }
-      .drawer-body { grid-template-columns: 1fr; gap: 16px; }
+      .bottom-drawer.open { height: 85vh; }
+      .drawer-body { grid-template-columns: 1fr; gap: 16px; padding: 12px 14px; }
       .drawer-toggle-summary { display: none; }
+      .drawer-daily-col { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+      .drawer-daily-table { font-size: 11px; min-width: 320px; }
+      .drawer-daily-table th { padding: 0 6px 6px; font-size: 9px; }
+      .drawer-daily-table td { padding: 5px 6px; }
+      /* Hide $ Diff column on mobile — keep % Diff */
+      .drawer-daily-table th:nth-child(4),
+      .drawer-daily-table td:nth-child(4) { display: none; }
+    }
+
+    /* Landscape phone: give drawer more room */
+    @media (max-height: 500px) and (max-width: 900px) {
+      .bottom-drawer.open { height: 90vh; }
+      .app-container { height: calc(100vh - 57px - 42px); }
     }
 
     /* Touch-friendly buttons */
