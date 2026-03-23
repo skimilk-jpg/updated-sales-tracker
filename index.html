@@ -362,12 +362,15 @@
 
     /* Calendar cells: tighter on mobile */
     @media (max-width: 600px) {
-      .cal-cell { min-height: 64px; padding: 4px; border-radius: 6px; }
+      .cal-cell { min-height: 72px; padding: 4px; border-radius: 6px; }
       .cell-date-num { font-size: 11px; width: 18px; height: 18px; }
       .cell-sales-amt { font-size: 10px; }
-      .cell-weather-row, .cell-events { display: none; }
+      .cell-weather-row { display: none; }
       .cell-tier-badge { display: none; }
       .dow-header { font-size: 9px; }
+      .cell-events { display: flex; flex-direction: column; gap: 1px; }
+      .cell-chip { font-size: 8px; padding: 1px 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      .cell-chip:nth-child(n+2) { display: none; }
     }
 
     /* Week view: reduce time label column on mobile */
