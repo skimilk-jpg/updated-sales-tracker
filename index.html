@@ -2632,6 +2632,8 @@ function checkPassword() {
     sessionStorage.setItem('doraji_auth', 'external');
     const _btn = document.getElementById('btnOwnerDashboard');
     if (_btn) _btn.style.display = 'none';
+    const _drawer = document.getElementById('bottomDrawer');
+    if (_drawer) _drawer.style.display = 'none';
   } else {
     document.getElementById('pwError').textContent = 'Incorrect password. Try again.';
     document.getElementById('pwInput').value = '';
@@ -2645,6 +2647,8 @@ if (_auth === '1' || _auth === 'external') {
 if (_auth === 'external') {
   const _btn = document.getElementById('btnOwnerDashboard');
   if (_btn) _btn.style.display = 'none';
+  const _drawer = document.getElementById('bottomDrawer');
+  if (_drawer) _drawer.style.display = 'none';
 }
 
 // ─── INIT ─────────────────────────────────────────────────────────
