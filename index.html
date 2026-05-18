@@ -1621,7 +1621,7 @@ function updateRightPanel() {
   // Sales — show actuals for past dates, forecast for future
   const {sales, salesLow, salesHigh, factors, actual} = predictDay(d);
   const sqDay = squareSales[dateKey(d)];
-  const hasActual = actual && sqDay && typeof sqDay === 'object';
+  const hasActual = actual && sqDay && typeof sqDay === 'object' && !isExternalView();
 
   drawGauge(sales);
   const color = salesColor(sales);
@@ -1744,8 +1744,13 @@ function updateTodayStats() {
   el('sTodayTemp').textContent = w ? `${w.maxTemp}°C` : '—';
   el('sTodayEvents').textContent = events.length;
   const sched = getScheduleDay(TODAY);
-  el('sTodayStaff').textContent = sched ? sched.headcount : '—';
-  el('sTodayHours').textContent = sched ? sched.totalHours + 'h' : '—';
+  if (isExternalView()) {
+    el('sTodayStaff').textContent = '—';
+    el('sTodayHours').textContent = '—';
+  } else {
+    el('sTodayStaff').textContent = sched ? sched.headcount : '—';
+    el('sTodayHours').textContent = sched ? sched.totalHours + 'h' : '—';
+  }
 }
 
 // ─── MTD ACCURACY SUMMARY ─────────────────────────────────────────
@@ -2131,6 +2136,11 @@ function updateStaffingPanel(d) {
   const el = document.getElementById('rpStaffing');
   const syncEl = document.getElementById('rpStaffingSync');
   if (!el) return;
+
+  if (isExternalView()) {
+    document.getElementById('rpStaffingSection').style.display = 'none';
+    return;
+  }
 
   const s = getScheduleDay(d);
   if (!s) {
@@ -2609,18 +2619,24 @@ function showToast(msg, type='success') {
 document.querySelectorAll('.modal-backdrop').forEach(el=>el.addEventListener('click',e=>{ if(e.target===el) el.classList.remove('open'); }));
 
 // ─── PASSWORD ─────────────────────────────────────────────────────
+function isExternalView() { return sessionStorage.getItem('doraji_auth') === 'external'; }
+
 function checkPassword() {
   const val = document.getElementById('pwInput').value;
   if (val === 'Doraji2024!') {
     document.getElementById('passwordOverlay').style.display = 'none';
     sessionStorage.setItem('doraji_auth', '1');
+  } else if (val === 'DorajiGuest2025!') {
+    document.getElementById('passwordOverlay').style.display = 'none';
+    sessionStorage.setItem('doraji_auth', 'external');
   } else {
     document.getElementById('pwError').textContent = 'Incorrect password. Try again.';
     document.getElementById('pwInput').value = '';
     document.getElementById('pwInput').focus();
   }
 }
-if (sessionStorage.getItem('doraji_auth') === '1') {
+const _auth = sessionStorage.getItem('doraji_auth');
+if (_auth === '1' || _auth === 'external') {
   document.getElementById('passwordOverlay').style.display = 'none';
 }
 
