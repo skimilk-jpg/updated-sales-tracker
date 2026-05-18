@@ -753,7 +753,7 @@
   </div>
   <div class="header-right">
     <div class="weather-status" id="weatherStatus"><div class="spin"></div><span>Loading weather...</span></div>
-    <button class="btn btn-hide-mobile" onclick="openDashboard()">📊 Owner Dashboard</button>
+    <button class="btn btn-hide-mobile" id="btnOwnerDashboard" onclick="openDashboard()">📊 Owner Dashboard</button>
     <button class="btn btn-hide-mobile" onclick="openLegend()">? Legend</button>
     <button class="btn btn-accent" onclick="openModal('addEventModal')">+ Add Event</button>
     <button class="btn" onclick="openSettingsModal()">⚙︎</button>
@@ -2346,6 +2346,7 @@ function calibrateFromSquare() {
 
 // ─── OWNER DASHBOARD ──────────────────────────────────────────────
 function openDashboard() {
+  if (isExternalView()) return;
   document.getElementById('dashboardOverlay').classList.add('open');
   renderDashboard();
 }
@@ -2629,6 +2630,8 @@ function checkPassword() {
   } else if (val === 'DorajiGuest2025!') {
     document.getElementById('passwordOverlay').style.display = 'none';
     sessionStorage.setItem('doraji_auth', 'external');
+    const _btn = document.getElementById('btnOwnerDashboard');
+    if (_btn) _btn.style.display = 'none';
   } else {
     document.getElementById('pwError').textContent = 'Incorrect password. Try again.';
     document.getElementById('pwInput').value = '';
@@ -2638,6 +2641,10 @@ function checkPassword() {
 const _auth = sessionStorage.getItem('doraji_auth');
 if (_auth === '1' || _auth === 'external') {
   document.getElementById('passwordOverlay').style.display = 'none';
+}
+if (_auth === 'external') {
+  const _btn = document.getElementById('btnOwnerDashboard');
+  if (_btn) _btn.style.display = 'none';
 }
 
 // ─── INIT ─────────────────────────────────────────────────────────
