@@ -55,6 +55,7 @@ jobs:
           TM_API_KEY:         ${{ secrets.TM_API_KEY }}
           REPORT_RECIPIENTS:  ${{ secrets.REPORT_RECIPIENTS }}
           REPORT_FROM:        ${{ secrets.REPORT_FROM }}
+          REPORT_TO:          ${{ secrets.REPORT_TO }}
           RESEND_API_KEY:     ${{ secrets.RESEND_API_KEY }}
           SENDGRID_API_KEY:   ${{ secrets.SENDGRID_API_KEY }}
         run: |

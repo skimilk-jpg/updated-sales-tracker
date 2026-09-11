@@ -56,22 +56,37 @@ function channelMix(days, keys) {
   return { anyData, rows: Object.entries(mix).sort((a, b) => b[1].net - a[1].net) };
 }
 
+// Partners are BCC'd so no recipient sees another's address. Both providers require
+// at least one visible To:, so the sender itself takes that slot — which also leaves
+// a copy in the sending mailbox as a send receipt.
 async function send(subject, html, recipients, from) {
-  const payloadResend = JSON.stringify({ from, to: recipients, subject, html });
+  const visibleTo = process.env.REPORT_TO || from;
+  const bcc = recipients.filter(r => r.toLowerCase() !== visibleTo.toLowerCase());
+
   if (process.env.RESEND_API_KEY) {
-    return post('api.resend.com', '/emails', payloadResend, {
+    const body = JSON.stringify({
+      from, to: [visibleTo],
+      ...(bcc.length ? { bcc } : {}),
+      subject, html,
+    });
+    await post('api.resend.com', '/emails', body, {
       Authorization: `Bearer ${process.env.RESEND_API_KEY}`,
     });
+    return { visibleTo, bccCount: bcc.length };
   }
   if (process.env.SENDGRID_API_KEY) {
     const body = JSON.stringify({
-      personalizations: [{ to: recipients.map(e => ({ email: e })) }],
+      personalizations: [{
+        to: [{ email: visibleTo }],
+        ...(bcc.length ? { bcc: bcc.map(e => ({ email: e })) } : {}),
+      }],
       from: { email: from }, subject,
       content: [{ type: 'text/html', value: html }],
     });
-    return post('api.sendgrid.com', '/v3/mail/send', body, {
+    await post('api.sendgrid.com', '/v3/mail/send', body, {
       Authorization: `Bearer ${process.env.SENDGRID_API_KEY}`,
     });
+    return { visibleTo, bccCount: bcc.length };
   }
   throw new Error('No email provider configured (set RESEND_API_KEY or SENDGRID_API_KEY)');
 }
@@ -203,8 +218,8 @@ async function main() {
   const recipients = (process.env.REPORT_RECIPIENTS || '').split(',').map(s => s.trim()).filter(Boolean);
   if (!recipients.length) throw new Error('REPORT_RECIPIENTS not set');
   const from = process.env.REPORT_FROM || 'reports@doraji.ca';
-  await send(subject, html, recipients, from);
-  console.log(`Sent to ${recipients.join(', ')}`);
+  const sent = await send(subject, html, recipients, from);
+  console.log(`Sent — To: ${sent.visibleTo}, Bcc: ${sent.bccCount} recipient(s)`);
 }
 
 function render(d) {
