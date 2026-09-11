@@ -225,6 +225,7 @@ function render(d) {
       <td ${td}><strong>${r.dowName}</strong> <span style="color:${c.muted}">${r.date}</span></td>
       <td ${tdR}>${r.gross == null ? '—' : money(r.gross)}</td>
       <td ${tdR}><strong>${r.net == null ? '—' : money(r.net)}</strong></td>
+      <td ${tdR}>${r.tx == null ? '—' : r.tx.toLocaleString('en-CA')}</td>
       <td ${tdR}>${money(r.forecast)}</td>
       <td style="padding:9px 10px;font-size:13px;border-bottom:1px solid ${c.border};text-align:right;color:${vc};font-weight:600">${vtxt}</td>
     </tr>`;
@@ -293,7 +294,7 @@ function render(d) {
   <tr><td style="padding:22px 26px 4px">
     <div style="font-size:13px;font-weight:800;color:${c.text};margin-bottom:10px">Daily Detail — Actual vs Forecast</div>
     <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;table-layout:fixed;word-wrap:break-word">
-      <tr><th ${th} width="24%">Day</th><th ${th} width="19%" style="text-align:right">Gross</th><th ${th} width="19%" style="text-align:right">Net</th><th ${th} width="19%" style="text-align:right">Forecast</th><th ${th} width="19%" style="text-align:right">Variance</th></tr>
+      <tr><th ${th} width="22%">Day</th><th ${th} width="16%" style="text-align:right">Gross</th><th ${th} width="16%" style="text-align:right">Net</th><th ${th} width="12%" style="text-align:right">Txns</th><th ${th} width="17%" style="text-align:right">Forecast</th><th ${th} width="17%" style="text-align:right">Variance</th></tr>
       ${dailyRows}
     </table>
   </td></tr>
