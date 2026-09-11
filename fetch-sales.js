@@ -39,6 +39,23 @@ function toTorontoDate(isoStr) {
   return new Date(isoStr).toLocaleDateString('en-CA', { timeZone: 'America/Toronto' });
 }
 
+// Square reports the originating application in order.source.name. Values vary by
+// integration ('Square Point of Sale', 'Square Online', 'DoorDash', ...), so bucket
+// them into stable channel keys and keep anything unrecognized under its raw name.
+function channelOf(order) {
+  const raw = (order.source && order.source.name) ? String(order.source.name).trim() : '';
+  if (!raw) return 'Unknown';
+  const s = raw.toLowerCase();
+  if (s.includes('point of sale') || s === 'square' || s.includes('register')) return 'In-Store POS';
+  if (s.includes('online') || s.includes('ecom') || s.includes('web'))         return 'Square Online';
+  if (s.includes('invoice'))                                                   return 'Invoices';
+  if (s.includes('doordash'))                                                  return 'DoorDash';
+  if (s.includes('uber'))                                                      return 'Uber Eats';
+  if (s.includes('skip'))                                                      return 'SkipTheDishes';
+  if (s.includes('ritual'))                                                    return 'Ritual';
+  return raw;
+}
+
 async function fetchAllOrders() {
   const orders = [];
   let cursor = null;
@@ -90,7 +107,8 @@ async function main() {
   const orders = await fetchAllOrders();
   for (const o of orders) {
     const date = toTorontoDate(o.created_at);
-    if (!daily[date]) daily[date] = { gross: 0, discounts: 0, net: 0, tips: 0, tax: 0, refunds: 0, txCount: 0 };
+    if (!daily[date]) daily[date] = { gross: 0, discounts: 0, net: 0, tips: 0, tax: 0, refunds: 0, txCount: 0, channels: {} };
+    if (!daily[date].channels) daily[date].channels = {};
 
     // Gross = sum of line item prices before discounts (Square's definition)
     let orderGross = 0;
@@ -107,6 +125,14 @@ async function main() {
     daily[date].tips      += orderTips;
     daily[date].tax       += orderTax;
     daily[date].txCount   += 1;
+
+    // Per-channel split. Refunds come from a separate endpoint keyed by payment,
+    // not order, so they stay day-level only — channel net is gross less discounts.
+    const ch = channelOf(o);
+    const c = daily[date].channels[ch] || (daily[date].channels[ch] = { gross: 0, discounts: 0, net: 0, txCount: 0 });
+    c.gross     += orderGross;
+    c.discounts += orderDiscounts;
+    c.txCount   += 1;
   }
   console.log(`  ${orders.length} orders across ${Object.keys(daily).length} days`);
 
@@ -135,6 +161,12 @@ async function main() {
     d.tax       = cents(d.tax);
     d.refunds   = cents(d.refunds);
     d.net       = Math.round(Math.max(0, d.gross - d.discounts - d.refunds) * 100) / 100;
+    for (const ch of Object.keys(d.channels || {})) {
+      const c = d.channels[ch];
+      c.gross     = cents(c.gross);
+      c.discounts = cents(c.discounts);
+      c.net       = Math.round(Math.max(0, c.gross - c.discounts) * 100) / 100;
+    }
   }
 
   const output = { updatedAt: new Date().toISOString(), days: daily };

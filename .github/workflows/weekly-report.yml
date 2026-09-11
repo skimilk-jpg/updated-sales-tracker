@@ -1,0 +1,67 @@
+name: Weekly Partner KPI Report
+
+# Emails the previous Mon-Sun week to partners.
+#
+# Nothing is sent until REPORT_RECIPIENTS and an email provider key are set as repo
+# secrets — without them the script exits non-zero and the run fails loudly rather
+# than sending a half-configured report to external partners.
+#
+# Test first:  Actions -> Weekly Partner KPI Report -> Run workflow -> dry_run = true
+# That builds the report and uploads it as an artifact without emailing anyone.
+
+on:
+  schedule:
+    - cron: '0 13 * * 1'   # Mondays, 8 AM Toronto (UTC-5) — after the daily syncs
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Build the report without sending it'
+        type: boolean
+        default: true
+      week:
+        description: 'Monday of the week to report (YYYY-MM-DD, blank = last week)'
+        type: string
+        default: ''
+
+jobs:
+  report:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Build report (dry run)
+        if: ${{ inputs.dry_run }}
+        env:
+          TM_API_KEY: ${{ secrets.TM_API_KEY }}
+        run: node weekly-report.js --dry-run ${{ inputs.week && format('--week={0}', inputs.week) || '' }}
+
+      - name: Upload preview
+        if: ${{ inputs.dry_run }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: weekly-report-preview
+          path: weekly-report-preview.html
+
+      - name: Build and send report
+        if: ${{ !inputs.dry_run }}
+        env:
+          TM_API_KEY:         ${{ secrets.TM_API_KEY }}
+          REPORT_RECIPIENTS:  ${{ secrets.REPORT_RECIPIENTS }}
+          REPORT_FROM:        ${{ secrets.REPORT_FROM }}
+          RESEND_API_KEY:     ${{ secrets.RESEND_API_KEY }}
+          SENDGRID_API_KEY:   ${{ secrets.SENDGRID_API_KEY }}
+        run: |
+          if [ -z "$REPORT_RECIPIENTS" ]; then
+            echo "::notice::REPORT_RECIPIENTS is not set — skipping send. Add the repo secrets to enable the weekly partner email."
+            exit 0
+          fi
+          if [ -z "$RESEND_API_KEY" ] && [ -z "$SENDGRID_API_KEY" ]; then
+            echo "::notice::No email provider key set — skipping send."
+            exit 0
+          fi
+          node weekly-report.js ${{ inputs.week && format('--week={0}', inputs.week) || '' }}

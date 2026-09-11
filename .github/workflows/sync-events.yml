@@ -1,0 +1,36 @@
+name: Sync City Events Archive
+
+# Ticketmaster only serves upcoming events, so event history cannot be back-filled.
+# This runs daily and grows events-data.json so past weeks keep their event context.
+
+on:
+  schedule:
+    - cron: '0 12 * * *'   # Daily at 7 AM Toronto (UTC-5), after the Square sync
+  workflow_dispatch:
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Fetch city events
+        env:
+          TM_API_KEY: ${{ secrets.TM_API_KEY }}
+        run: node fetch-events.js
+
+      - name: Commit and push events-data.json
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add events-data.json
+          git diff --staged --quiet || git commit -m "chore: update city events archive [skip ci]"
+          git pull --rebase
+          git push
