@@ -10,8 +10,10 @@ name: Weekly Partner KPI Report
 # That builds the report and uploads it as an artifact without emailing anyone.
 
 on:
-  schedule:
-    - cron: '0 13 * * 1'   # Mondays, 8 AM Toronto (UTC-5) — after the daily syncs
+  # Schedule is intentionally disabled until the first report has been reviewed.
+  # Uncomment to start sending automatically every Monday.
+  # schedule:
+  #   - cron: '0 13 * * 1'   # Mondays, 8 AM Toronto (UTC-5) — after the daily syncs
   workflow_dispatch:
     inputs:
       dry_run:
